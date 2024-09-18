@@ -22,10 +22,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Debug - List directory contents
+    - name: Debug - Network Information
       run: |
-        pwd
-        ls -R
+        echo "Hostname resolution:"
+        nslookup ${{ secrets.IMAP_SERVER }}
+        echo "Ping test:"
+        ping -c 4 ${{ secrets.IMAP_SERVER }}
+        echo "Traceroute:"
+        traceroute ${{ secrets.IMAP_SERVER }}
     
     - name: Run email processor
       env:
@@ -35,4 +39,3 @@ jobs:
         IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
         IMAP_PORT: ${{ secrets.IMAP_PORT }}
       run: python email_processor.py
-      working-directory: ${{ github.workspace }}
