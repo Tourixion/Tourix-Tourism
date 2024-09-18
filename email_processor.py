@@ -13,6 +13,40 @@ import socket
 import sys
 import time
 
+def connect_to_imap(email_address, password, imap_server, imap_port=993):
+    print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
+    
+    try:
+        # Attempt to resolve the hostname
+        print(f"Resolving hostname: {imap_server}")
+        ip_address = socket.gethostbyname(imap_server)
+        print(f"Resolved {imap_server} to IP: {ip_address}")
+
+        # Create a socket and wrap it with SSL
+        print("Creating SSL connection")
+        context = ssl.create_default_context()
+        with socket.create_connection((imap_server, imap_port)) as sock:
+            with context.wrap_socket(sock, server_hostname=imap_server) as secure_sock:
+                print(f"SSL connection established to {imap_server}:{imap_port}")
+                
+                # Create IMAP4 client
+                imap = imaplib.IMAP4_SSL(imap_server, imap_port)
+                
+                print("Attempting to log in")
+                imap.login(email_address, password)
+                print("Successfully logged in to IMAP server")
+                return imap
+    except socket.gaierror as e:
+        print(f"Address-related error connecting to server: {e}")
+    except socket.error as e:
+        print(f"Connection error: {e}")
+    except ssl.SSLError as e:
+        print(f"SSL error: {e}")
+    except imaplib.IMAP4.error as e:
+        print(f"IMAP4 error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {type(e).__name__}: {e}")
+    raise
 def debug_dns(hostname):
     print(f"Attempting to resolve {hostname}")
     try:
@@ -289,7 +323,7 @@ def main():
     print("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
     password = os.environ['EMAIL_PASSWORD']
-    imap_server = os.environ['IMAP_SERVER']
+    imap_server = os.environ['IMAP_SERVER']  # This should be 'mail.kokoonvolos.gr'
     imap_port = int(os.environ.get('IMAP_PORT', 993))
 
     print(f"Email Address: {email_address}")
@@ -320,9 +354,15 @@ def main():
 
         imap.logout()
         print("Email processing completed successfully")
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
+    except imaplib.IMAP4.error as e:
+        print(f"An IMAP4 error occurred: {str(e)}")
         sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {str(e)}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
