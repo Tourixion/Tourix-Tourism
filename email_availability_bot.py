@@ -11,8 +11,8 @@ import os
 import requests
 from bs4 import BeautifulSoup
 
-def connect_to_inbox(email_address, password, imap_server="imap.gmail.com"):
-    imap = imaplib.IMAP4_SSL(imap_server)
+def connect_to_inbox(email_address, password, imap_server, imap_port=993):
+    imap = imaplib.IMAP4_SSL(imap_server, imap_port)
     imap.login(email_address, password)
     return imap
 
@@ -139,6 +139,8 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
 def send_email(to_address, subject, body):
     sender_email = os.environ['EMAIL_ADDRESS']
     sender_password = os.environ['EMAIL_PASSWORD']
+    smtp_server = os.environ['SMTP_SERVER']
+    smtp_port = int(os.environ.get('SMTP_PORT', 587))
 
     message = MIMEMultipart()
     message["From"] = sender_email
@@ -146,7 +148,7 @@ def send_email(to_address, subject, body):
     message["Subject"] = subject
     message.attach(MIMEText(body, "plain", "utf-8"))
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
         server.starttls()
         server.login(sender_email, sender_password)
         server.send_message(message)
@@ -260,8 +262,10 @@ def process_email(email_body, sender_address):
 def main():
     email_address = os.environ['EMAIL_ADDRESS']
     password = os.environ['EMAIL_PASSWORD']
+    imap_server = os.environ['IMAP_SERVER']
+    imap_port = int(os.environ.get('IMAP_PORT', 993))
 
-    imap = connect_to_inbox(email_address, password)
+    imap = connect_to_inbox(email_address, password, imap_server, imap_port)
     imap.select("INBOX")
 
     _, message_numbers = imap.search(None, "UNSEEN")
