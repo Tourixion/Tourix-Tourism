@@ -9,7 +9,8 @@ jobs:
   process_emails:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout code
+      uses: actions/checkout@v2
     
     - name: Set up Python
       uses: actions/setup-python@v2
@@ -21,6 +22,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
+    - name: Debug - List directory contents
+      run: |
+        pwd
+        ls -R
+    
     - name: Run email processor
       env:
         EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
@@ -29,3 +35,4 @@ jobs:
         IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
         IMAP_PORT: ${{ secrets.IMAP_PORT }}
       run: python email_processor.py
+      working-directory: ${{ github.workspace }}
