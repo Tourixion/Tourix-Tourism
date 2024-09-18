@@ -26,4 +26,8 @@ jobs:
         EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         ERROR_NOTIFICATION_EMAIL: ${{ secrets.ERROR_NOTIFICATION_EMAIL }}
+        IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
+        IMAP_PORT: ${{ secrets.IMAP_PORT }}
+        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
       run: python email_processor.py
