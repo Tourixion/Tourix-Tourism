@@ -26,8 +26,9 @@ jobs:
     
     - name: Check Playwright installation
       run: |
-        python -c "import playwright; print(f'Playwright package version: {playwright.__version__}')"
+        python -c "import playwright; print('Playwright package imported successfully')"
         playwright --version
+        python -m playwright --version
         python -c "from playwright.sync_api import sync_playwright; print('Playwright sync API imported successfully')"
         python -c "from playwright.sync_api import sync_playwright; with sync_playwright() as p: print(f'Chromium version: {p.chromium.version}')"
   
