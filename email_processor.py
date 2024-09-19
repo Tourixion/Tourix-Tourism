@@ -164,7 +164,7 @@ def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
-    url = "https://thekokoon.reserve-online.net/"
+    url = "https://thekokoonvolos.reserve-online.net/"
     
     params = {
         "checkin": check_in.strftime("%d/%m/%Y"),
