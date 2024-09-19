@@ -153,13 +153,19 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         "children": children
     }
     
+    print(f"Attempting to scrape availability data from {url}")
+    print(f"Request parameters: {params}")
+    
     try:
         response = requests.get(url, params=params)
         response.raise_for_status()
+        print(f"Successfully retrieved webpage. Status code: {response.status_code}")
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         
         availability_data = []
         room_containers = soup.find_all('div', class_='room-container')
+        print(f"Found {len(room_containers)} room containers")
         
         for room in room_containers:
             room_type = room.find('h2', class_='room-type').text.strip()
@@ -171,7 +177,9 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
                 "price": price,
                 "availability": availability
             })
+            print(f"Scraped data for room: {room_type}")
         
+        print(f"Scraped availability data: {availability_data}")
         return availability_data
     except requests.RequestException as e:
         print(f"Error scraping website: {e}")
@@ -282,35 +290,53 @@ def send_error_notification(imap, original_email, parse_result):
     send_email(recipient_email, subject, body)
     
 def process_email(imap, email_body, sender_address):
+    print("Starting to process email")
     is_greek_email = is_greek(email_body)
+    print(f"Email language: {'Greek' if is_greek_email else 'English'}")
+    
     reservation_info = parse_reservation_request(email_body)
+    print(f"Parsed reservation info: {reservation_info}")
     
     if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        print("Successfully parsed reservation:", reservation_info)
+        print("Reservation dates found, proceeding to web scraping")
         
-        availability_data = scrape_thekokoon_availability(
-            reservation_info['check_in'],
-            reservation_info['check_out'],
-            reservation_info.get('adults', 2),
-            reservation_info.get('children', 0)
-        )
+        try:
+            availability_data = scrape_thekokoon_availability(
+                reservation_info['check_in'],
+                reservation_info['check_out'],
+                reservation_info.get('adults', 2),
+                reservation_info.get('children', 0)
+            )
+            print(f"Web scraping result: {availability_data}")
         
-        if availability_data:
-            send_autoresponse(imap, sender_address, reservation_info, availability_data, is_greek_email)
-        else:
+            if availability_data:
+                print("Availability data found, sending detailed response")
+                send_autoresponse(imap, sender_address, reservation_info, availability_data, is_greek_email)
+            else:
+                print("No availability data found, sending generic response")
+                generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
+                generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας."
+                                if is_greek_email else
+                                "Thank you for your reservation request. We will process your request and get back to you shortly.")
+                send_email(sender_address, generic_subject, generic_body)
+        except Exception as e:
+            print(f"Error during web scraping: {str(e)}")
+            send_error_notification(imap, email_body, f"Web scraping failed: {str(e)}")
             generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
-            generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας."
+            generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                             if is_greek_email else
-                            "Thank you for your reservation request. We will process your request and get back to you shortly.")
+                            "Thank you for your reservation request. Our team will review it and get back to you shortly.")
             send_email(sender_address, generic_subject, generic_body)
     else:
-        print("Failed to parse reservation. Sending error notification.")
+        print("Failed to parse reservation dates. Sending error notification.")
         send_error_notification(imap, email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
         generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                         if is_greek_email else
                         "Thank you for your reservation request. Our team will review it and get back to you shortly.")
         send_email(sender_address, generic_subject, generic_body)
+
+    print("Email processing completed")
 
 def main():
     print("Starting email processor script")
