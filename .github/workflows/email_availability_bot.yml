@@ -21,24 +21,14 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    
-    - name: Check Python environment
-      run: |
-        python --version
-        pip list
-
-    - name: Verify IMAP connection
-      run: |
-        echo "Verifying IMAP connection:"
-        nc -zv mail.kokoonvolos.gr 993 || echo "IMAP port is not accessible"
+        pip install playwright
+        playwright install chromium
     
     - name: Run email processor
       env:
         EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        ERROR_NOTIFICATION_EMAIL: ${{ secrets.ERROR_NOTIFICATION_EMAIL }}
+        IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
+        IMAP_PORT: ${{ secrets.IMAP_PORT }}
       run: python email_processor.py
-
-    - name: Check for script errors
-      if: failure()
-      run: |
-        echo "The email processor script failed. Please check the logs for more information."
