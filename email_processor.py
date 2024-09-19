@@ -14,6 +14,7 @@ import socket
 import ssl
 import sys
 import time
+from playwright.sync_api import sync_playwright
 
 def connect_to_imap(email_address, password, imap_server, imap_port=993):
     print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
@@ -146,44 +147,55 @@ def is_greek(text):
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = "https://thekokoonvolos.reserve-online.net/"
     
-    params = {
-        "checkin": check_in.strftime("%d/%m/%Y"),
-        "checkout": check_out.strftime("%d/%m/%Y"),
-        "adults": adults,
-        "children": children
-    }
-    
     print(f"Attempting to scrape availability data from {url}")
-    print(f"Request parameters: {params}")
+    print(f"Parameters: Check-in: {check_in}, Check-out: {check_out}, Adults: {adults}, Children: {children}")
     
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        print(f"Successfully retrieved webpage. Status code: {response.status_code}")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
         
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        availability_data = []
-        room_containers = soup.find_all('div', class_='room-container')
-        print(f"Found {len(room_containers)} room containers")
-        
-        for room in room_containers:
-            room_type = room.find('h2', class_='room-type').text.strip()
-            price = room.find('span', class_='price').text.strip()
-            availability = room.find('span', class_='availability').text.strip()
+        try:
+            page.goto(url)
+            print(f"Navigated to {url}")
             
-            availability_data.append({
-                "room_type": room_type,
-                "price": price,
-                "availability": availability
-            })
-            print(f"Scraped data for room: {room_type}")
+            # Fill in the form
+            page.fill("#checkin", check_in.strftime("%d/%m/%Y"))
+            page.fill("#checkout", check_out.strftime("%d/%m/%Y"))
+            page.select_option("#adults", str(adults))
+            page.select_option("#children", str(children))
+            
+            # Submit the form
+            page.click("button[type='submit']")
+            
+            # Wait for results to load
+            page.wait_for_selector(".room-item")
+            
+            # Extract data
+            availability_data = []
+            room_items = page.query_selector_all(".room-item")
+            print(f"Found {len(room_items)} room items")
+            
+            for room in room_items:
+                room_type = room.query_selector(".room-name").inner_text()
+                price = room.query_selector(".price").inner_text()
+                availability = "Available"  # Assuming it's available if listed
+                
+                availability_data.append({
+                    "room_type": room_type,
+                    "price": price,
+                    "availability": availability
+                })
+                print(f"Scraped data for room: {room_type}")
+            
+            print(f"Scraped availability data: {availability_data}")
+            return availability_data
         
-        print(f"Scraped availability data: {availability_data}")
-        return availability_data
-    except requests.RequestException as e:
-        print(f"Error scraping website: {e}")
-        return None
+        except Exception as e:
+            print(f"Error scraping website: {e}")
+            return None
+        
+        finally:
+            browser.close()
 
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
