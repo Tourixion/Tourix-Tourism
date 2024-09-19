@@ -22,38 +22,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: DNS Lookup
+    - name: Verify IMAP connection
       run: |
-        echo "DNS Lookup:"
-        nslookup ${{ secrets.IMAP_SERVER }}
-    
-    - name: Ping Test
-      run: |
-        echo "Ping test:"
-        ping -c 4 ${{ secrets.IMAP_SERVER }} || echo "Ping failed"
-    
-    - name: Check IMAP Port
-      run: |
-        echo "IMAP Port check:"
-        nc -zv ${{ secrets.IMAP_SERVER }} ${{ secrets.IMAP_PORT }} || echo "IMAP port is not accessible"
-    
-    - name: Traceroute
-      run: |
-        echo "Traceroute:"
-        traceroute ${{ secrets.IMAP_SERVER }} || echo "Traceroute failed"
-    
-    - name: OpenSSL IMAP Check
-      run: |
-        echo "OpenSSL IMAP check:"
-        echo -e "A1 LOGOUT" | openssl s_client -connect ${{ secrets.IMAP_SERVER }}:${{ secrets.IMAP_PORT }} -crlf -quiet || echo "OpenSSL connection failed"
+        echo "Verifying IMAP connection:"
+        nc -zv mail.kokoonvolos.gr 993 || echo "IMAP port is not accessible"
     
     - name: Run email processor
       env:
         EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-        ERROR_NOTIFICATION_EMAIL: ${{ secrets.ERROR_NOTIFICATION_EMAIL }}
-        IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
-        IMAP_PORT: ${{ secrets.IMAP_PORT }}
       run: python email_processor.py
 
     - name: Check for script errors
