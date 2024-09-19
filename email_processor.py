@@ -151,51 +151,67 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
     print(f"Parameters: Check-in: {check_in}, Check-out: {check_out}, Adults: {adults}, Children: {children}")
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
-        page.set_default_timeout(60000)  # Increase timeout to 60 seconds
-        
+        browser = None
         try:
-            page.goto(url)
-            print(f"Navigated to {url}")
+            print("Launching browser")
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+            page.set_default_timeout(60000)  # Increase timeout to 60 seconds
             
-            # Wait for and fill in the form
+            print(f"Navigating to {url}")
+            response = page.goto(url)
+            print(f"Navigation complete. Status: {response.status}")
+            
+            print("Waiting for form elements")
             page.wait_for_selector("#checkin", state="visible")
+            page.wait_for_selector("#checkout", state="visible")
+            page.wait_for_selector("#adults", state="visible")
+            page.wait_for_selector("#children", state="visible")
+            
+            print("Filling in the form")
             page.fill("#checkin", check_in.strftime("%d/%m/%Y"))
             page.fill("#checkout", check_out.strftime("%d/%m/%Y"))
             page.select_option("#adults", str(adults))
             page.select_option("#children", str(children))
             
-            print("Form filled")
-            
-            # Submit the form
+            print("Locating submit button")
             submit_button = page.query_selector("button[type='submit']")
             if submit_button:
+                print("Submit button found. Clicking...")
                 submit_button.click()
                 print("Form submitted")
             else:
                 print("Submit button not found")
+                print("Current page content:")
+                print(page.content())
+                return None
             
-            # Wait for results to load
+            print("Waiting for results to load")
             page.wait_for_selector(".room-item", state="visible", timeout=30000)
             
-            # Extract data
+            print("Extracting data")
             availability_data = []
             room_items = page.query_selector_all(".room-item")
             print(f"Found {len(room_items)} room items")
             
             for room in room_items:
-                room_type = room.query_selector(".room-name").inner_text()
-                price = room.query_selector(".price").inner_text()
-                availability = "Available"  # Assuming it's available if listed
+                room_name = room.query_selector(".room-name")
+                price_elem = room.query_selector(".price")
                 
-                availability_data.append({
-                    "room_type": room_type,
-                    "price": price,
-                    "availability": availability
-                })
-                print(f"Scraped data for room: {room_type}")
+                if room_name and price_elem:
+                    room_type = room_name.inner_text()
+                    price = price_elem.inner_text()
+                    availability = "Available"  # Assuming it's available if listed
+                    
+                    availability_data.append({
+                        "room_type": room_type,
+                        "price": price,
+                        "availability": availability
+                    })
+                    print(f"Scraped data for room: {room_type}")
+                else:
+                    print("Failed to extract data for a room item")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -203,18 +219,21 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         except PlaywrightTimeoutError as e:
             print(f"Timeout error: {e}")
             print("Page content at time of error:")
-            print(page.content())
+            print(page.content() if 'page' in locals() else "Page not created")
             return None
         except Exception as e:
             print(f"Error scraping website: {e}")
             print("Page content at time of error:")
-            print(page.content())
+            print(page.content() if 'page' in locals() else "Page not created")
             return None
         
         finally:
-            context.close()
-            browser.close()
-            
+            if browser:
+                print("Closing browser")
+                browser.close()
+            else:
+                print("Browser was not initialized")
+
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
