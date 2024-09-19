@@ -21,10 +21,7 @@ def connect_to_imap(email_address, password, imap_server, imap_port=993):
     print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
     
     try:
-        # Create SSL context
         context = ssl.create_default_context()
-
-        # Create IMAP4 client
         print("Creating IMAP4_SSL client")
         imap = imaplib.IMAP4_SSL(imap_server, imap_port, ssl_context=context)
         
@@ -32,32 +29,9 @@ def connect_to_imap(email_address, password, imap_server, imap_port=993):
         imap.login(email_address, password)
         print("Successfully logged in to IMAP server")
         return imap
-    except socket.gaierror as e:
-        print(f"Address-related error connecting to server: {e}")
-    except socket.error as e:
-        print(f"Connection error: {e}")
-    except ssl.SSLError as e:
-        print(f"SSL error: {e}")
-    except imaplib.IMAP4.error as e:
-        print(f"IMAP4 error: {e}")
     except Exception as e:
         print(f"Unexpected error: {type(e).__name__}: {e}")
-    raise
-
-def debug_dns(hostname):
-    print(f"Attempting to resolve {hostname}")
-    try:
-        ip_address = socket.gethostbyname(hostname)
-        print(f"Successfully resolved {hostname} to {ip_address}")
-    except socket.gaierror as e:
-        print(f"Failed to resolve {hostname}. Error: {e}")
-    
-    try:
-        print(f"Attempting to get address info for {hostname}")
-        addr_info = socket.getaddrinfo(hostname, None)
-        print(f"Address info for {hostname}: {addr_info}")
-    except socket.gaierror as e:
-        print(f"Failed to get address info for {hostname}. Error: {e}")
+        raise
 
 def get_email_content(msg):
     subject = decode_header(msg["Subject"])[0][0]
@@ -145,10 +119,6 @@ def parse_reservation_request(email_body):
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
-
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from datetime import datetime, timedelta
-
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
@@ -209,8 +179,6 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             if 'browser' in locals():
                 browser.close()
 
-
-                
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
@@ -232,7 +200,7 @@ def send_email(to_address, subject, body):
         print(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-def send_autoresponse(imap, to_address, reservation_info, availability_data, is_greek_email):
+def send_autoresponse(to_address, reservation_info, availability_data, is_greek_email):
     if is_greek_email:
         subject = "Απάντηση στο Αίτημα Κράτησης"
         body = f"""
@@ -248,10 +216,10 @@ def send_autoresponse(imap, to_address, reservation_info, availability_data, is_
         Με βάση το αίτημά σας, έχουμε τις ακόλουθες διαθέσιμες επιλογές:
 
         """
-        for apartment in availability_data:
-            body += f"\nΔιαμέρισμα: {apartment['apartment_name']}\n"
-            for rate in apartment['rates']:
-                body += f"  - {rate['rate_name']}: {rate['price']} ({rate['cancellation']})\n"
+        for room in availability_data:
+            body += f"\nΤύπος δωματίου: {room['room_type']}\n"
+            body += f"Τιμή: {room['price']}\n"
+            body += f"Διαθεσιμότητα: {room['availability']}\n"
         
         body += """
         Παρακαλούμε σημειώστε ότι αυτές οι πληροφορίες βασίζονται στην τρέχουσα διαθεσιμότητα και μπορεί να αλλάξουν.
@@ -276,10 +244,10 @@ def send_autoresponse(imap, to_address, reservation_info, availability_data, is_
         Based on your request, we have the following available options:
 
         """
-        for apartment in availability_data:
-            body += f"\nApartment: {apartment['apartment_name']}\n"
-            for rate in apartment['rates']:
-                body += f"  - {rate['rate_name']}: {rate['price']} ({rate['cancellation']})\n"
+        for room in availability_data:
+            body += f"\nRoom type: {room['room_type']}\n"
+            body += f"Price: {room['price']}\n"
+            body += f"Availability: {room['availability']}\n"
         
         body += """
         Please note that this information is based on current availability and may change.
@@ -292,7 +260,7 @@ def send_autoresponse(imap, to_address, reservation_info, availability_data, is_
 
     send_email(to_address, subject, body)
     
-def send_error_notification(imap, original_email, parse_result):
+def send_error_notification(original_email, parse_result):
     recipient_email = os.environ['ERROR_NOTIFICATION_EMAIL']
     subject = "Parsing Error: Reservation Request"
     body = f"""
@@ -308,7 +276,7 @@ def send_error_notification(imap, original_email, parse_result):
     """
     
     send_email(recipient_email, subject, body)
-    
+
 def process_email(email_body, sender_address):
     print("Starting to process email")
     is_greek_email = is_greek(email_body)
@@ -338,7 +306,7 @@ def process_email(email_body, sender_address):
         print("Failed to parse reservation dates. Sending error notification.")
         send_error_notification(email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
-        generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
+generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                         if is_greek_email else
                         "Thank you for your reservation request. Our team will review it and get back to you shortly.")
         send_email(sender_address, generic_subject, generic_body)
@@ -417,13 +385,14 @@ def main():
                 email_body = get_email_content(email_msg)
                 print("Email body retrieved")
                 
-                process_email(imap, email_body, sender_address)  # Updated this line
+                process_email(email_body, sender_address)  # Corrected: removed 'imap' argument
                 print(f"Finished processing message number: {num}")
 
         imap.logout()
         print("Email processing completed successfully")
     except Exception as e:
         print(f"An error occurred: {str(e)}")
+        traceback.print_exc()
         raise
 
 if __name__ == "__main__":
