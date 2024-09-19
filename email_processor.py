@@ -57,27 +57,6 @@ def debug_dns(hostname):
     except socket.gaierror as e:
         print(f"Failed to get address info for {hostname}. Error: {e}")
 
-def connect_to_imap(email_address, password, imap_server, imap_port=993):
-    print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
-    
-    debug_dns(imap_server)
-    
-    try:
-        print(f"Creating SSL connection to {imap_server}:{imap_port}")
-        imap = imaplib.IMAP4_SSL(imap_server, imap_port)
-        print("SSL connection established")
-        
-        print("Attempting to log in")
-        imap.login(email_address, password)
-        print("Successfully logged in to IMAP server")
-        return imap
-    except imaplib.IMAP4.error as e:
-        print(f"IMAP4 error: {str(e)}")
-    except socket.error as e:
-        print(f"Socket error: {str(e)}")
-    except Exception as e:
-        print(f"Unexpected error: {str(e)}")
-    raise
 
 def get_email_content(msg):
     subject = decode_header(msg["Subject"])[0][0]
