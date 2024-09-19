@@ -24,6 +24,11 @@ jobs:
         pip install playwright
         playwright install chromium
     
+    - name: Check Playwright installation
+      run: |
+        python -c "from playwright.sync_api import sync_playwright; print(f'Playwright version: {sync_playwright.__version__}')"
+        playwright --version
+    
     - name: Run email processor
       env:
         EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
