@@ -145,11 +145,19 @@ def parse_reservation_request(email_body):
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
+
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from datetime import datetime, timedelta
+
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
-    url = "https://thekokoonvolos.reserve-online.net/"
+    base_url = "https://thekokoonvolos.reserve-online.net/"
+    nights = (check_out - check_in).days
+    
+    url = f"{base_url}?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={nights}&adults={adults}&src=107"
+    if children > 0:
+        url += f"&children={children}"
     
     print(f"Attempting to scrape availability data from {url}")
-    print(f"Parameters: Check-in: {check_in}, Check-out: {check_out}, Adults: {adults}, Children: {children}")
     
     with sync_playwright() as p:
         browser = None
@@ -164,30 +172,6 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             response = page.goto(url)
             print(f"Navigation complete. Status: {response.status}")
             
-            print("Waiting for form elements")
-            page.wait_for_selector("#checkin", state="visible")
-            page.wait_for_selector("#checkout", state="visible")
-            page.wait_for_selector("#adults", state="visible")
-            page.wait_for_selector("#children", state="visible")
-            
-            print("Filling in the form")
-            page.fill("#checkin", check_in.strftime("%d/%m/%Y"))
-            page.fill("#checkout", check_out.strftime("%d/%m/%Y"))
-            page.select_option("#adults", str(adults))
-            page.select_option("#children", str(children))
-            
-            print("Locating submit button")
-            submit_button = page.query_selector("button[type='submit']")
-            if submit_button:
-                print("Submit button found. Clicking...")
-                submit_button.click()
-                print("Form submitted")
-            else:
-                print("Submit button not found")
-                print("Current page content:")
-                print(page.content())
-                return None
-            
             print("Waiting for results to load")
             page.wait_for_selector(".room-item", state="visible", timeout=30000)
             
@@ -197,22 +181,27 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             print(f"Found {len(room_items)} room items")
             
             for room in room_items:
-                room_name = room.query_selector(".room-name")
-                price_elem = room.query_selector(".price")
+                apartment_name = room.query_selector(".room-name").inner_text().strip()
+                rate_items = room.query_selector_all(".rate-item")
                 
-                if room_name and price_elem:
-                    room_type = room_name.inner_text()
-                    price = price_elem.inner_text()
-                    availability = "Available"  # Assuming it's available if listed
+                apartment_data = {
+                    "apartment_name": apartment_name,
+                    "rates": []
+                }
+                
+                for rate in rate_items:
+                    rate_name = rate.query_selector(".rate-name").inner_text().strip()
+                    price = rate.query_selector(".price").inner_text().strip()
+                    cancellation = "Free cancellation" if rate.query_selector(".free-cancellation") else "Non-refundable"
                     
-                    availability_data.append({
-                        "room_type": room_type,
+                    apartment_data["rates"].append({
+                        "rate_name": rate_name,
                         "price": price,
-                        "availability": availability
+                        "cancellation": cancellation
                     })
-                    print(f"Scraped data for room: {room_type}")
-                else:
-                    print("Failed to extract data for a room item")
+                
+                availability_data.append(apartment_data)
+                print(f"Scraped data for apartment: {apartment_name}")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -234,6 +223,8 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
                 browser.close()
             else:
                 print("Browser was not initialized")
+
+
                 
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
@@ -272,13 +263,10 @@ def send_autoresponse(imap, to_address, reservation_info, availability_data, is_
         Με βάση το αίτημά σας, έχουμε τις ακόλουθες διαθέσιμες επιλογές:
 
         """
-        for room in availability_data:
-            body += f"""
-            Τύπος δωματίου: {room['room_type']}
-            Τιμή: {room['price']}
-            Διαθεσιμότητα: {room['availability']}
-            
-            """
+        for apartment in availability_data:
+            body += f"\nΔιαμέρισμα: {apartment['apartment_name']}\n"
+            for rate in apartment['rates']:
+                body += f"  - {rate['rate_name']}: {rate['price']} ({rate['cancellation']})\n"
         
         body += """
         Παρακαλούμε σημειώστε ότι αυτές οι πληροφορίες βασίζονται στην τρέχουσα διαθεσιμότητα και μπορεί να αλλάξουν.
@@ -303,13 +291,10 @@ def send_autoresponse(imap, to_address, reservation_info, availability_data, is_
         Based on your request, we have the following available options:
 
         """
-        for room in availability_data:
-            body += f"""
-            Room type: {room['room_type']}
-            Price: {room['price']}
-            Availability: {room['availability']}
-            
-            """
+        for apartment in availability_data:
+            body += f"\nApartment: {apartment['apartment_name']}\n"
+            for rate in apartment['rates']:
+                body += f"  - {rate['rate_name']}: {rate['price']} ({rate['cancellation']})\n"
         
         body += """
         Please note that this information is based on current availability and may change.
