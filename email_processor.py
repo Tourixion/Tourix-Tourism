@@ -339,8 +339,8 @@ def main():
     print("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
     password = os.environ['EMAIL_PASSWORD']
-    imap_server = 'mail.kokoonvolos.gr'  # Use the provided server address
-    imap_port = 993  # Use the provided IMAP port
+    imap_server = 'mail.kokoonvolos.gr'
+    imap_port = 993
 
     print(f"Email Address: {email_address}")
     print(f"IMAP Server: {imap_server}")
@@ -365,7 +365,7 @@ def main():
                 email_body = get_email_content(email_msg)
                 print("Email body retrieved")
                 
-                process_email(imap, email_body, sender_address)
+                process_email(email_body, sender_address)  # Updated this line
                 print(f"Finished processing message number: {num}")
 
         imap.logout()
