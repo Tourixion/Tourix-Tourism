@@ -150,58 +150,47 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 from datetime import datetime, timedelta
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
-    base_url = "https://thekokoonvolos.reserve-online.net/"
-    nights = (check_out - check_in).days
-    
-    url = f"{base_url}?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={nights}&adults={adults}&src=107"
+    url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
         url += f"&children={children}"
     
     print(f"Attempting to scrape availability data from {url}")
     
     with sync_playwright() as p:
-        browser = None
         try:
-            print("Launching browser")
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
-            page = context.new_page()
+            page = browser.new_page()
             page.set_default_timeout(60000)  # Increase timeout to 60 seconds
             
             print(f"Navigating to {url}")
             response = page.goto(url)
             print(f"Navigation complete. Status: {response.status}")
             
-            print("Waiting for results to load")
-            page.wait_for_selector(".room-item", state="visible", timeout=30000)
+            print("Waiting for page to load completely")
+            page.wait_for_load_state('networkidle')
             
-            print("Extracting data")
+            print("Checking for room name and price elements")
+            room_names = page.query_selector_all('td.name')
+            room_prices = page.query_selector_all('td.price')
+            
+            print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
+            
+            if not room_names or not room_prices:
+                print("No room data found. Dumping page content:")
+                print(page.content())
+                return None
+            
             availability_data = []
-            room_items = page.query_selector_all(".room-item")
-            print(f"Found {len(room_items)} room items")
-            
-            for room in room_items:
-                apartment_name = room.query_selector(".room-name").inner_text().strip()
-                rate_items = room.query_selector_all(".rate-item")
+            for name, price in zip(room_names, room_prices):
+                room_type = name.inner_text().strip()
+                price_text = price.inner_text().strip()
                 
-                apartment_data = {
-                    "apartment_name": apartment_name,
-                    "rates": []
-                }
-                
-                for rate in rate_items:
-                    rate_name = rate.query_selector(".rate-name").inner_text().strip()
-                    price = rate.query_selector(".price").inner_text().strip()
-                    cancellation = "Free cancellation" if rate.query_selector(".free-cancellation") else "Non-refundable"
-                    
-                    apartment_data["rates"].append({
-                        "rate_name": rate_name,
-                        "price": price,
-                        "cancellation": cancellation
-                    })
-                
-                availability_data.append(apartment_data)
-                print(f"Scraped data for apartment: {apartment_name}")
+                availability_data.append({
+                    "room_type": room_type,
+                    "price": price_text,
+                    "availability": "Available"  # Assuming available if listed
+                })
+                print(f"Scraped data for room: {room_type} - Price: {price_text}")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -209,20 +198,16 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         except PlaywrightTimeoutError as e:
             print(f"Timeout error: {e}")
             print("Page content at time of error:")
-            print(page.content() if 'page' in locals() else "Page not created")
+            print(page.content())
             return None
         except Exception as e:
-            print(f"Error scraping website: {e}")
+            print(f"Unexpected error: {e}")
             print("Page content at time of error:")
-            print(page.content() if 'page' in locals() else "Page not created")
+            print(page.content())
             return None
-        
         finally:
-            if browser:
-                print("Closing browser")
+            if 'browser' in locals():
                 browser.close()
-            else:
-                print("Browser was not initialized")
 
 
                 
@@ -324,7 +309,7 @@ def send_error_notification(imap, original_email, parse_result):
     
     send_email(recipient_email, subject, body)
     
-def process_email(imap, email_body, sender_address):
+def process_email(email_body, sender_address):
     print("Starting to process email")
     is_greek_email = is_greek(email_body)
     print(f"Email language: {'Greek' if is_greek_email else 'English'}")
@@ -335,36 +320,23 @@ def process_email(imap, email_body, sender_address):
     if 'check_in' in reservation_info and 'check_out' in reservation_info:
         print("Reservation dates found, proceeding to web scraping")
         
-        try:
-            availability_data = scrape_thekokoon_availability(
-                reservation_info['check_in'],
-                reservation_info['check_out'],
-                reservation_info.get('adults', 2),
-                reservation_info.get('children', 0)
-            )
-            print(f"Web scraping result: {availability_data}")
+        availability_data = scrape_thekokoon_availability(
+            reservation_info['check_in'],
+            reservation_info['check_out'],
+            reservation_info.get('adults', 2),
+            reservation_info.get('children', 0)
+        )
+        print(f"Web scraping result: {availability_data}")
         
-            if availability_data:
-                print("Availability data found, sending detailed response")
-                send_autoresponse(imap, sender_address, reservation_info, availability_data, is_greek_email)
-            else:
-                print("No availability data found or scraping failed, sending generic response")
-                generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
-                generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας."
-                                if is_greek_email else
-                                "Thank you for your reservation request. We will process your request and get back to you shortly.")
-                send_email(sender_address, generic_subject, generic_body)
-        except Exception as e:
-            print(f"Error during web scraping: {str(e)}")
-            send_error_notification(imap, email_body, f"Web scraping failed: {str(e)}")
-            generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
-            generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
-                            if is_greek_email else
-                            "Thank you for your reservation request. Our team will review it and get back to you shortly.")
-            send_email(sender_address, generic_subject, generic_body)
+        if availability_data:
+            print("Availability data found, sending detailed response")
+            send_autoresponse(sender_address, reservation_info, availability_data, is_greek_email)
+        else:
+            print("No availability data found, sending partial information response")
+            send_partial_info_response(sender_address, reservation_info, is_greek_email)
     else:
         print("Failed to parse reservation dates. Sending error notification.")
-        send_error_notification(imap, email_body, reservation_info)
+        send_error_notification(email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
         generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                         if is_greek_email else
@@ -372,6 +344,48 @@ def process_email(imap, email_body, sender_address):
         send_email(sender_address, generic_subject, generic_body)
 
     print("Email processing completed")
+
+def send_partial_info_response(to_address, reservation_info, is_greek_email):
+    if is_greek_email:
+        subject = "Λήψη Αιτήματος Κράτησης - Μερικές Πληροφορίες"
+        body = f"""
+        Αγαπητέ πελάτη,
+
+        Σας ευχαριστούμε για το ενδιαφέρον σας στο Kokoon Volos. Έχουμε λάβει το αίτημά σας για κράτηση με τις ακόλουθες λεπτομέρειες:
+
+        Ημερομηνία άφιξης: {reservation_info['check_in']}
+        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
+        Αριθμός ενηλίκων: {reservation_info.get('adults', 'Δεν διευκρινίστηκε')}
+        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
+
+        Λόγω τεχνικών δυσκολιών, δεν μπορούμε να παρέχουμε αναλυτικές πληροφορίες διαθεσιμότητας αυτή τη στιγμή. Η ομάδα μας θα επεξεργαστεί το αίτημά σας και θα επικοινωνήσει σύντομα μαζί σας με περισσότερες πληροφορίες.
+
+        Εάν έχετε οποιεσδήποτε ερωτήσεις, μη διστάσετε να επικοινωνήσετε μαζί μας.
+
+        Με εκτίμηση,
+        Η ομάδα του Kokoon Volos
+        """
+    else:
+        subject = "Reservation Request Received - Partial Information"
+        body = f"""
+        Dear guest,
+
+        Thank you for your interest in Kokoon Volos. We have received your reservation request with the following details:
+
+        Check-in date: {reservation_info['check_in']}
+        Check-out date: {reservation_info['check_out']}
+        Number of adults: {reservation_info.get('adults', 'Not specified')}
+        Number of children: {reservation_info.get('children', 'Not specified')}
+
+        Due to technical difficulties, we are unable to provide detailed availability information at this time. Our team will process your request and get back to you shortly with more information.
+
+        If you have any questions, please don't hesitate to contact us.
+
+        Best regards,
+        The Kokoon Volos Team
+        """
+    
+    send_email(to_address, subject, body)
 
 def main():
     print("Starting email processor script")
