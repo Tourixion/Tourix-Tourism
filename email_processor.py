@@ -17,15 +17,6 @@ def connect_to_imap(email_address, password, imap_server, imap_port=993):
     print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
     
     try:
-        # Attempt to resolve the hostname
-        print(f"Attempting to resolve {imap_server}")
-        ip_address = socket.gethostbyname(imap_server)
-        print(f"Successfully resolved {imap_server} to {ip_address}")
-
-        print(f"Attempting to get address info for {imap_server}")
-        addr_info = socket.getaddrinfo(imap_server, None)
-        print(f"Address info for {imap_server}: {addr_info}")
-
         # Create SSL context
         context = ssl.create_default_context()
 
@@ -34,10 +25,7 @@ def connect_to_imap(email_address, password, imap_server, imap_port=993):
         imap = imaplib.IMAP4_SSL(imap_server, imap_port, ssl_context=context)
         
         print("Attempting to log in")
-        # Ensure username and password are properly quoted
-        quoted_username = f'"{email_address}"'
-        quoted_password = f'"{password}"'
-        imap.login(quoted_username, quoted_password)
+        imap.login(email_address, password)
         print("Successfully logged in to IMAP server")
         return imap
     except socket.gaierror as e:
@@ -51,7 +39,6 @@ def connect_to_imap(email_address, password, imap_server, imap_port=993):
     except Exception as e:
         print(f"Unexpected error: {type(e).__name__}: {e}")
     raise
-
 
 def debug_dns(hostname):
     print(f"Attempting to resolve {hostname}")
@@ -329,8 +316,8 @@ def main():
     print("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
     password = os.environ['EMAIL_PASSWORD']
-    imap_server = os.environ['IMAP_SERVER']
-    imap_port = int(os.environ.get('IMAP_PORT', 993))
+    imap_server = 'mail.kokoonvolos.gr'  # Use the provided server address
+    imap_port = 993  # Use the provided IMAP port
 
     print(f"Email Address: {email_address}")
     print(f"IMAP Server: {imap_server}")
@@ -362,7 +349,8 @@ def main():
         print("Email processing completed successfully")
     except Exception as e:
         print(f"An error occurred: {str(e)}")
-        sys.exit(1)
+        raise
 
 if __name__ == "__main__":
     main()
+
