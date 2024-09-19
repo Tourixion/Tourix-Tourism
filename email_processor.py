@@ -209,60 +209,68 @@ def send_email_via_imap(imap, to_address, subject, body):
 
 def send_autoresponse(imap, to_address, reservation_info, availability_data, is_greek_email):
     if is_greek_email:
-        subject = "Λήψη Αιτήματος Κράτησης και Διαθεσιμότητα"
+        subject = "Απάντηση στο Αίτημα Κράτησης"
         body = f"""
-        Αγαπητέ Πελάτη,
+        Αγαπητέ πελάτη,
 
-        Σας ευχαριστούμε για το αίτημα κράτησης. Έχουμε λάβει τις ακόλουθες λεπτομέρειες:
+        Σας ευχαριστούμε για το ενδιαφέρον σας στο Kokoon Volos. Έχουμε λάβει το αίτημά σας για κράτηση με τις ακόλουθες λεπτομέρειες:
 
-        Άφιξη: {reservation_info.get('check_in', 'Δεν διευκρινίστηκε')}
-        Αναχώρηση: {reservation_info.get('check_out', 'Δεν διευκρινίστηκε')}
-        Ενήλικες: {reservation_info.get('adults', 'Δεν διευκρινίστηκε')}
-        Παιδιά: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
+        Ημερομηνία άφιξης: {reservation_info['check_in']}
+        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
+        Αριθμός ενηλίκων: {reservation_info['adults']}
+        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
 
-        Διαθεσιμότητα και τιμές για τις ζητούμενες ημερομηνίες:
+        Με βάση το αίτημά σας, έχουμε τις ακόλουθες διαθέσιμες επιλογές:
+
         """
         for room in availability_data:
-            body += f"\nΤύπος Δωματίου: {room['room_type']}"
-            body += f"\nΤιμή: {room['price']}"
-            body += f"\nΔιαθεσιμότητα: {room['availability']}\n"
-
+            body += f"""
+            Τύπος δωματίου: {room['room_type']}
+            Τιμή: {room['price']}
+            Διαθεσιμότητα: {room['availability']}
+            
+            """
+        
         body += """
-        Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας με επιβεβαίωση και τυχόν πρόσθετες πληροφορίες.
+        Παρακαλούμε σημειώστε ότι αυτές οι πληροφορίες βασίζονται στην τρέχουσα διαθεσιμότητα και μπορεί να αλλάξουν.
 
-        Εάν έχετε οποιεσδήποτε ερωτήσεις, μη διστάσετε να επικοινωνήσετε μαζί μας.
+        Εάν επιθυμείτε να προχωρήσετε με την κράτηση ή έχετε περαιτέρω ερωτήσεις, παρακαλούμε μη διστάσετε να επικοινωνήσετε μαζί μας.
 
         Με εκτίμηση,
-        Η Ομάδα Κρατήσεων
+        Η ομάδα του Kokoon Volos
         """
     else:
-        subject = "Reservation Request Received and Availability"
+        subject = "Response to Your Reservation Request"
         body = f"""
-        Dear Guest,
+        Dear guest,
 
-        Thank you for your reservation request. We have received the following details:
+        Thank you for your interest in Kokoon Volos. We have received your reservation request with the following details:
 
-        Check-in: {reservation_info.get('check_in', 'Not specified')}
-        Check-out: {reservation_info.get('check_out', 'Not specified')}
-        Adults: {reservation_info.get('adults', 'Not specified')}
-        Children: {reservation_info.get('children', 'Not specified')}
+        Check-in date: {reservation_info['check_in']}
+        Check-out date: {reservation_info['check_out']}
+        Number of adults: {reservation_info['adults']}
+        Number of children: {reservation_info.get('children', 'Not specified')}
 
-        Availability and pricing for the requested dates:
+        Based on your request, we have the following available options:
+
         """
         for room in availability_data:
-            body += f"\nRoom Type: {room['room_type']}"
-            body += f"\nPrice: {room['price']}"
-            body += f"\nAvailability: {room['availability']}\n"
-
+            body += f"""
+            Room type: {room['room_type']}
+            Price: {room['price']}
+            Availability: {room['availability']}
+            
+            """
+        
         body += """
-        We will process your request and get back to you shortly with confirmation and any additional information.
+        Please note that this information is based on current availability and may change.
 
-        If you have any questions, please don't hesitate to contact us.
+        If you wish to proceed with the booking or have any further questions, please don't hesitate to contact us.
 
         Best regards,
-        The Reservation Team
+        The Kokoon Volos Team
         """
-    
+
     send_email_via_imap(imap, to_address, subject, body)
 
 def send_error_notification(imap, original_email, parse_result):
