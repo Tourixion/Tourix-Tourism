@@ -22,6 +22,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
+    - name: Check Python environment
+      run: |
+        python --version
+        pip list
+
     - name: Verify IMAP connection
       run: |
         echo "Verifying IMAP connection:"
