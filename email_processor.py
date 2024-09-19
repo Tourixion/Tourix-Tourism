@@ -74,6 +74,17 @@ def parse_reservation_request(email_body):
     }
 
     def parse_custom_date(date_string):
+        # Check for formats like "9nov" or "9 nov"
+        match = re.match(r'(\d{1,2})\s*([a-zα-ω]+)', date_string)
+        if match:
+            day = int(match.group(1))
+            month_str = match.group(2)
+            if month_str in month_mapping:
+                month = month_mapping[month_str]
+                year = datetime.now().year
+                return datetime(year, month, day).date()
+
+        # If not in the above format, proceed with the existing logic
         components = re.findall(r'\b\w+\b', date_string)
         day = month = year = None
         
@@ -151,16 +162,38 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
                 return None
             
             availability_data = []
+            current_room_type = None
             for name, price in zip(room_names, room_prices):
                 room_type = name.inner_text().strip()
                 price_text = price.inner_text().strip()
                 
-                availability_data.append({
-                    "room_type": room_type,
-                    "price": price_text,
-                    "availability": "Available"  # Assuming available if listed
-                })
-                print(f"Scraped data for room: {room_type} - Price: {price_text}")
+                # Remove "Book Now" and extract price and savings
+                price_info = re.search(r'\$(\d+\.\d+).*?You Save:\$(\d+\.\d+)', price_text)
+                if price_info:
+                    price = float(price_info.group(1))
+                    savings = float(price_info.group(2))
+                else:
+                    price = 0
+                    savings = 0
+                
+                # Check if this is a new room type or a variation of the previous one
+                if room_type == current_room_type:
+                    availability_data[-1]['variations'].append({
+                        "price": price,
+                        "savings": savings,
+                        "cancellation": "Free Cancellation"
+                    })
+                else:
+                    availability_data.append({
+                        "room_type": room_type,
+                        "price": price,
+                        "savings": savings,
+                        "availability": "Available",
+                        "variations": []
+                    })
+                    current_room_type = room_type
+                
+                print(f"Scraped data for room: {room_type} - Price: ${price:.2f}")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -178,6 +211,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         finally:
             if 'browser' in locals():
                 browser.close()
+
 
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
@@ -218,17 +252,13 @@ def send_autoresponse(to_address, reservation_info, availability_data, is_greek_
         """
         for room in availability_data:
             body += f"\nΤύπος δωματίου: {room['room_type']}\n"
-            body += f"Τιμή: {room['price']}\n"
+            body += f"Τιμή: ${room['price']:.2f}\n"
+            body += f"Εξοικονόμηση: ${room['savings']:.2f}\n"
             body += f"Διαθεσιμότητα: {room['availability']}\n"
-        
-        body += """
-        Παρακαλούμε σημειώστε ότι αυτές οι πληροφορίες βασίζονται στην τρέχουσα διαθεσιμότητα και μπορεί να αλλάξουν.
-
-        Εάν επιθυμείτε να προχωρήσετε με την κράτηση ή έχετε περαιτέρω ερωτήσεις, παρακαλούμε μη διστάσετε να επικοινωνήσετε μαζί μας.
-
-        Με εκτίμηση,
-        Η ομάδα του Kokoon Volos
-        """
+            if room['variations']:
+                body += "Επιλογές:\n"
+                for var in room['variations']:
+                    body += f"  - Τιμή: ${var['price']:.2f}, Εξοικονόμηση: ${var['savings']:.2f}, {var['cancellation']}\n"
     else:
         subject = "Response to Your Reservation Request"
         body = f"""
@@ -246,17 +276,22 @@ def send_autoresponse(to_address, reservation_info, availability_data, is_greek_
         """
         for room in availability_data:
             body += f"\nRoom type: {room['room_type']}\n"
-            body += f"Price: {room['price']}\n"
+            body += f"Price: ${room['price']:.2f}\n"
+            body += f"You Save: ${room['savings']:.2f}\n"
             body += f"Availability: {room['availability']}\n"
-        
-        body += """
-        Please note that this information is based on current availability and may change.
+            if room['variations']:
+                body += "Options:\n"
+                for var in room['variations']:
+                    body += f"  - Price: ${var['price']:.2f}, You Save: ${var['savings']:.2f}, {var['cancellation']}\n"
+    
+    body += """
+    Please note that this information is based on current availability and may change.
 
-        If you wish to proceed with the booking or have any further questions, please don't hesitate to contact us.
+    If you wish to proceed with the booking or have any further questions, please don't hesitate to contact us.
 
-        Best regards,
-        The Kokoon Volos Team
-        """
+    Best regards,
+    The Kokoon Volos Team
+    """
 
     send_email(to_address, subject, body)
     
