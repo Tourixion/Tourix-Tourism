@@ -152,23 +152,33 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        context = browser.new_context()
+        page = context.new_page()
+        page.set_default_timeout(60000)  # Increase timeout to 60 seconds
         
         try:
             page.goto(url)
             print(f"Navigated to {url}")
             
-            # Fill in the form
+            # Wait for and fill in the form
+            page.wait_for_selector("#checkin", state="visible")
             page.fill("#checkin", check_in.strftime("%d/%m/%Y"))
             page.fill("#checkout", check_out.strftime("%d/%m/%Y"))
             page.select_option("#adults", str(adults))
             page.select_option("#children", str(children))
             
+            print("Form filled")
+            
             # Submit the form
-            page.click("button[type='submit']")
+            submit_button = page.query_selector("button[type='submit']")
+            if submit_button:
+                submit_button.click()
+                print("Form submitted")
+            else:
+                print("Submit button not found")
             
             # Wait for results to load
-            page.wait_for_selector(".room-item")
+            page.wait_for_selector(".room-item", state="visible", timeout=30000)
             
             # Extract data
             availability_data = []
@@ -190,13 +200,21 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             print(f"Scraped availability data: {availability_data}")
             return availability_data
         
+        except PlaywrightTimeoutError as e:
+            print(f"Timeout error: {e}")
+            print("Page content at time of error:")
+            print(page.content())
+            return None
         except Exception as e:
             print(f"Error scraping website: {e}")
+            print("Page content at time of error:")
+            print(page.content())
             return None
         
         finally:
+            context.close()
             browser.close()
-
+            
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
@@ -325,7 +343,7 @@ def process_email(imap, email_body, sender_address):
                 print("Availability data found, sending detailed response")
                 send_autoresponse(imap, sender_address, reservation_info, availability_data, is_greek_email)
             else:
-                print("No availability data found, sending generic response")
+                print("No availability data found or scraping failed, sending generic response")
                 generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
                 generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας."
                                 if is_greek_email else
