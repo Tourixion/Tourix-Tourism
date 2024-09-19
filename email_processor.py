@@ -14,7 +14,6 @@ import socket
 import ssl
 import sys
 import time
-from playwright.sync_api import sync_playwright
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import traceback
 
@@ -163,9 +162,6 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             
             print(f"Navigating to {url}")
             response = page.goto(url)
-            if response is None:
-                print("Failed to load the page")
-                return None
             print(f"Navigation complete. Status: {response.status}")
             
             print("Waiting for form elements")
@@ -216,9 +212,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
                     })
                     print(f"Scraped data for room: {room_type}")
                 else:
-                    print("Failed to extract room name or price.")
-                    print(f"Room HTML content: {room.inner_html()}")
-                    continue
+                    print("Failed to extract data for a room item")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -230,7 +224,6 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             return None
         except Exception as e:
             print(f"Error scraping website: {e}")
-            traceback.print_exc()  # Print full stack trace for debugging
             print("Page content at time of error:")
             print(page.content() if 'page' in locals() else "Page not created")
             return None
