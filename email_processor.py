@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 import socket
 import ssl
 import sys
+import time
 
 def connect_to_imap(email_address, password, imap_server, imap_port=993):
     print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
