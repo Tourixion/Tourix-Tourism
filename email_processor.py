@@ -1,4 +1,5 @@
 import imaplib
+import smtplib
 import email
 from email.header import decode_header
 from email.mime.text import MIMEText
@@ -198,14 +199,27 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         print(f"Error scraping website: {e}")
         return None
 
-def send_email_via_imap(imap, to_address, subject, body):
+def send_email(to_address, subject, body):
+    smtp_server = "mail.kokoonvolos.gr"
+    smtp_port = 465  # SSL port
+    sender_email = os.environ['EMAIL_ADDRESS']
+    password = os.environ['EMAIL_PASSWORD']
+
     message = MIMEMultipart()
-    message["From"] = os.environ['EMAIL_ADDRESS']
+    message["From"] = sender_email
     message["To"] = to_address
     message["Subject"] = subject
     message.attach(MIMEText(body, "plain", "utf-8"))
 
-    imap.append('Sent', '', imaplib.Time2Internaldate(time.time()), message.as_string().encode('utf-8'))
+    try:
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, password)
+            server.send_message(message)
+        print(f"Email sent successfully to {to_address}")
+    except Exception as e:
+        print(f"Failed to send email to {to_address}. Error: {str(e)}")
+        raise
+
 
 def send_autoresponse(imap, to_address, reservation_info, availability_data, is_greek_email):
     if is_greek_email:
@@ -271,8 +285,8 @@ def send_autoresponse(imap, to_address, reservation_info, availability_data, is_
         The Kokoon Volos Team
         """
 
-    send_email_via_imap(imap, to_address, subject, body)
-
+    send_email(to_address, subject, body)
+    
 def send_error_notification(imap, original_email, parse_result):
     recipient_email = os.environ['ERROR_NOTIFICATION_EMAIL']
     subject = "Parsing Error: Reservation Request"
@@ -288,9 +302,9 @@ def send_error_notification(imap, original_email, parse_result):
     Please review and process this request manually.
     """
     
-    send_email_via_imap(imap, recipient_email, subject, body)
-
-def process_email(imap, email_body, sender_address):
+    send_email(recipient_email, subject, body)
+    
+def process_email(email_body, sender_address):
     is_greek_email = is_greek(email_body)
     reservation_info = parse_reservation_request(email_body)
     
@@ -305,21 +319,21 @@ def process_email(imap, email_body, sender_address):
         )
         
         if availability_data:
-            send_autoresponse(imap, sender_address, reservation_info, availability_data, is_greek_email)
+            send_autoresponse(sender_address, reservation_info, availability_data, is_greek_email)
         else:
             generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
             generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας."
                             if is_greek_email else
                             "Thank you for your reservation request. We will process your request and get back to you shortly.")
-            send_email_via_imap(imap, sender_address, generic_subject, generic_body)
+            send_email(sender_address, generic_subject, generic_body)
     else:
         print("Failed to parse reservation. Sending error notification.")
-        send_error_notification(imap, email_body, reservation_info)
+        send_error_notification(email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
         generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                         if is_greek_email else
                         "Thank you for your reservation request. Our team will review it and get back to you shortly.")
-        send_email_via_imap(imap, sender_address, generic_subject, generic_body)
+        send_email(sender_address, generic_subject, generic_body)
 
 def main():
     print("Starting email processor script")
