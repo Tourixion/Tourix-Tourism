@@ -306,7 +306,7 @@ def process_email(email_body, sender_address):
         print("Failed to parse reservation dates. Sending error notification.")
         send_error_notification(email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
-generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
+        generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                         if is_greek_email else
                         "Thank you for your reservation request. Our team will review it and get back to you shortly.")
         send_email(sender_address, generic_subject, generic_body)
