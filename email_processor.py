@@ -18,25 +18,28 @@ def connect_to_imap(email_address, password, imap_server, imap_port=993):
     
     try:
         # Attempt to resolve the hostname
-        print(f"Resolving hostname: {imap_server}")
+        print(f"Attempting to resolve {imap_server}")
         ip_address = socket.gethostbyname(imap_server)
-        print(f"Resolved {imap_server} to IP: {ip_address}")
+        print(f"Successfully resolved {imap_server} to {ip_address}")
 
-        # Create a socket and wrap it with SSL
-        print("Creating SSL connection")
+        print(f"Attempting to get address info for {imap_server}")
+        addr_info = socket.getaddrinfo(imap_server, None)
+        print(f"Address info for {imap_server}: {addr_info}")
+
+        # Create SSL context
         context = ssl.create_default_context()
-        with socket.create_connection((imap_server, imap_port), timeout=10) as sock:
-            with context.wrap_socket(sock, server_hostname=imap_server) as secure_sock:
-                print(f"SSL connection established to {imap_server}:{imap_port}")
-                
-                # Create IMAP4 client
-                print("Creating IMAP4_SSL client")
-                imap = imaplib.IMAP4_SSL(imap_server, imap_port, ssl_context=context)
-                
-                print("Attempting to log in")
-                imap.login(email_address, password)
-                print("Successfully logged in to IMAP server")
-                return imap
+
+        # Create IMAP4 client
+        print("Creating IMAP4_SSL client")
+        imap = imaplib.IMAP4_SSL(imap_server, imap_port, ssl_context=context)
+        
+        print("Attempting to log in")
+        # Ensure username and password are properly quoted
+        quoted_username = f'"{email_address}"'
+        quoted_password = f'"{password}"'
+        imap.login(quoted_username, quoted_password)
+        print("Successfully logged in to IMAP server")
+        return imap
     except socket.gaierror as e:
         print(f"Address-related error connecting to server: {e}")
     except socket.error as e:
