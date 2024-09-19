@@ -57,7 +57,6 @@ def debug_dns(hostname):
     except socket.gaierror as e:
         print(f"Failed to get address info for {hostname}. Error: {e}")
 
-
 def get_email_content(msg):
     subject = decode_header(msg["Subject"])[0][0]
     if isinstance(subject, bytes):
@@ -199,7 +198,6 @@ def send_email(to_address, subject, body):
         print(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-
 def send_autoresponse(imap, to_address, reservation_info, availability_data, is_greek_email):
     if is_greek_email:
         subject = "Απάντηση στο Αίτημα Κράτησης"
@@ -283,7 +281,7 @@ def send_error_notification(imap, original_email, parse_result):
     
     send_email(recipient_email, subject, body)
     
-def process_email(email_body, sender_address):
+def process_email(imap, email_body, sender_address):
     is_greek_email = is_greek(email_body)
     reservation_info = parse_reservation_request(email_body)
     
@@ -298,7 +296,7 @@ def process_email(email_body, sender_address):
         )
         
         if availability_data:
-            send_autoresponse(sender_address, reservation_info, availability_data, is_greek_email)
+            send_autoresponse(imap, sender_address, reservation_info, availability_data, is_greek_email)
         else:
             generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
             generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Θα επεξεργαστούμε το αίτημά σας και θα επικοινωνήσουμε σύντομα μαζί σας."
@@ -307,7 +305,7 @@ def process_email(email_body, sender_address):
             send_email(sender_address, generic_subject, generic_body)
     else:
         print("Failed to parse reservation. Sending error notification.")
-        send_error_notification(email_body, reservation_info)
+        send_error_notification(imap, email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
         generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
                         if is_greek_email else
@@ -344,7 +342,7 @@ def main():
                 email_body = get_email_content(email_msg)
                 print("Email body retrieved")
                 
-                process_email(email_body, sender_address)  # Updated this line
+                process_email(imap, email_body, sender_address)  # Updated this line
                 print(f"Finished processing message number: {num}")
 
         imap.logout()
@@ -355,4 +353,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
