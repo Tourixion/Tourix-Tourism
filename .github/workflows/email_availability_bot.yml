@@ -26,10 +26,12 @@ jobs:
       run: |
         echo "DNS Lookup:"
         nslookup ${{ secrets.IMAP_SERVER }}
-        echo "Ping test:"
-        ping -c 4 ${{ secrets.IMAP_SERVER }}
-        echo "Telnet test to IMAP server:"
-        timeout 5 telnet ${{ secrets.IMAP_SERVER }} ${{ secrets.IMAP_PORT }} || echo "Telnet failed or timed out"
+        echo "Traceroute:"
+        traceroute ${{ secrets.IMAP_SERVER }}
+        echo "Port scan:"
+        nc -zv ${{ secrets.IMAP_SERVER }} ${{ secrets.IMAP_PORT }}
+        echo "OpenSSL connection test:"
+        openssl s_client -connect ${{ secrets.IMAP_SERVER }}:${{ secrets.IMAP_PORT }} -crlf -quiet
     
     - name: Run email processor
       env:
