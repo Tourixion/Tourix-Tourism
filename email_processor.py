@@ -151,7 +151,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
     if children > 0:
         url += f"&children={children}"
     
-    print(f"Attempting to scrape availability data from {url}")
+    logging.info(f"Attempting to scrape availability data from {url}")
     
     with sync_playwright() as p:
         try:
@@ -159,61 +159,70 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             page = browser.new_page()
             page.set_default_timeout(60000)  # Increase timeout to 60 seconds
             
-            print(f"Navigating to {url}")
+            logging.info(f"Navigating to {url}")
             response = page.goto(url)
-            print(f"Navigation complete. Status: {response.status}")
+            logging.info(f"Navigation complete. Status: {response.status}")
             
-            print("Waiting for page to load completely")
+            logging.info("Waiting for page to load completely")
             page.wait_for_load_state('networkidle')
             
-            print("Checking for room elements")
-            room_elements = page.query_selector_all('tr.room_details')
+            logging.info("Checking for room elements")
+            room_elements = page.query_selector_all('div.room-container')
             
-            print(f"Found {len(room_elements)} room elements")
+            logging.info(f"Found {len(room_elements)} room elements")
             
             if not room_elements:
-                print("No room data found. Dumping page content:")
-                print(page.content())
+                logging.warning("No room data found. Dumping page content:")
+                logging.warning(page.content())
                 return None
             
             availability_data = []
             for room in room_elements:
-                room_type = room.query_selector('td.name').inner_text().strip()
-                price_element = room.query_selector('td.price')
-                
-                price_text = price_element.inner_text().strip()
-                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_text)
-                price = float(price_match.group(1)) if price_match else 0.00
-                
-                savings_match = re.search(r'You Save:\$(\d+(?:\.\d{2})?)', price_text)
-                savings = float(savings_match.group(1)) if savings_match else 0.00
-                
-                cancellation_policy = "Free Cancellation" if "Free Cancellation" in price_text else "Non-refundable"
-                free_cancellation_date = calculate_free_cancellation_date(check_in) if cancellation_policy == "Free Cancellation" else None
-                
-                availability_data.append({
-                    "room_type": room_type,
-                    "price": price,
-                    "savings": savings,
-                    "availability": "Available",
-                    "cancellation_policy": cancellation_policy,
-                    "free_cancellation_date": free_cancellation_date
-                })
-                
-                print(f"Scraped data for room: {room_type} - Price: ${price:.2f}, Savings: ${savings:.2f}")
+                try:
+                    room_type = room.query_selector('.room-name').inner_text().strip()
+                    price_element = room.query_selector('.room-price')
+                    
+                    if price_element:
+                        price_text = price_element.inner_text().strip()
+                        logging.debug(f"Raw price text: {price_text}")
+                        
+                        price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_text)
+                        price = float(price_match.group(1)) if price_match else 0.00
+                        
+                        savings_match = re.search(r'You Save:?\s*\$(\d+(?:\.\d{2})?)', price_text, re.IGNORECASE)
+                        savings = float(savings_match.group(1)) if savings_match else 0.00
+                        
+                        cancellation_policy = "Free Cancellation" if "Free Cancellation" in price_text else "Non-refundable"
+                        free_cancellation_date = calculate_free_cancellation_date(check_in) if cancellation_policy == "Free Cancellation" else None
+                        
+                        availability_data.append({
+                            "room_type": room_type,
+                            "price": price,
+                            "savings": savings,
+                            "availability": "Available",
+                            "cancellation_policy": cancellation_policy,
+                            "free_cancellation_date": free_cancellation_date
+                        })
+                        
+                        logging.info(f"Scraped data for room: {room_type} - Price: ${price:.2f}, Savings: ${savings:.2f}")
+                    else:
+                        logging.warning(f"No price element found for room: {room_type}")
+                except Exception as e:
+                    logging.error(f"Error processing room element: {e}")
+                    logging.error(f"Room HTML: {room.inner_html()}")
             
-            print(f"Scraped availability data: {availability_data}")
+            logging.info(f"Scraped availability data: {availability_data}")
             return availability_data
         
         except PlaywrightTimeoutError as e:
-            print(f"Timeout error: {e}")
-            print("Page content at time of error:")
-            print(page.content())
+            logging.error(f"Timeout error: {e}")
+            logging.error("Page content at time of error:")
+            logging.error(page.content())
             return None
         except Exception as e:
-            print(f"Unexpected error: {e}")
-            print("Page content at time of error:")
-            print(page.content())
+            logging.error(f"Unexpected error: {e}")
+            logging.error("Page content at time of error:")
+            logging.error(page.content())
             return None
         finally:
             if 'browser' in locals():
