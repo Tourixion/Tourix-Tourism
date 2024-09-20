@@ -18,8 +18,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import traceback
 from datetime import datetime, timedelta
 import logging
-from forex_python.converter import CurrencyRates
-
+from forex_python.converter import CurrencyRates, RatesNotAvailableError
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -163,15 +162,46 @@ def calculate_free_cancellation_date(check_in_date):
     
     return free_cancellation_date
     
+def get_exchange_rate():
+    # Try forex-python first
+    try:
+        c = CurrencyRates()
+        return c.get_rate('USD', 'EUR')
+    except RatesNotAvailableError:
+        print("forex-python API not available. Trying exchangerate-api.com...")
+
+    # If forex-python fails, try exchangerate-api.com
+    try:
+        api_key = os.environ.get('EXCHANGERATE_API_KEY')
+        if not api_key:
+            raise ValueError("EXCHANGERATE_API_KEY not set in environment variables")
+        
+        url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
+        response = requests.get(url)
+        data = response.json()
+        
+        if data['result'] == 'success':
+            return data['conversion_rates']['EUR']
+        else:
+            raise Exception(f"API request failed: {data['error-type']}")
+    except Exception as e:
+        print(f"Error fetching exchange rate from exchangerate-api.com: {str(e)}")
+        raise
+
 def add_euro_prices(availability_data):
-    c = CurrencyRates()
-    usd_to_eur_rate = c.get_rate('USD', 'EUR')
-    
-    for room in availability_data:
-        for price_option in room['prices']:
-            price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
-    
-    return availability_data
+    try:
+        usd_to_eur_rate = get_exchange_rate()
+        print(f"Current USD to EUR rate: {usd_to_eur_rate}")
+        
+        for room in availability_data:
+            for price_option in room['prices']:
+                price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
+        
+        return availability_data
+    except Exception as e:
+        print(f"Failed to get exchange rate: {str(e)}")
+        raise
+
     
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
