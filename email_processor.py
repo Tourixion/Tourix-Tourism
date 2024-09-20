@@ -20,19 +20,18 @@ from datetime import datetime, timedelta
 import logging
 
 def calculate_free_cancellation_date(check_in_date):
-    # Convert string to datetime if necessary
     if isinstance(check_in_date, str):
         check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
     
-    # Calculate the free cancellation date (20 days before check-in)
     free_cancellation_date = check_in_date - timedelta(days=20)
     
-    # Adjust for the specific rule about November 9th and 10th
     if check_in_date.month == 11:
         if check_in_date.day == 9:
             free_cancellation_date = datetime(check_in_date.year, 10, 20).date()
         elif check_in_date.day == 10:
             free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
+    
+    return free_cancellation_date
             
 def connect_to_imap(email_address, password, imap_server, imap_port=993):
     print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
@@ -152,7 +151,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
     if children > 0:
         url += f"&children={children}"
     
-    logging.info(f"Attempting to scrape availability data from {url}")
+    print(f"Attempting to scrape availability data from {url}")
     
     with sync_playwright() as p:
         try:
@@ -160,70 +159,63 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             page = browser.new_page()
             page.set_default_timeout(60000)  # Increase timeout to 60 seconds
             
-            logging.info(f"Navigating to {url}")
+            print(f"Navigating to {url}")
             response = page.goto(url)
-            logging.info(f"Navigation complete. Status: {response.status}")
+            print(f"Navigation complete. Status: {response.status}")
             
-            logging.info("Waiting for page to load completely")
+            print("Waiting for page to load completely")
             page.wait_for_load_state('networkidle')
             
-            logging.info("Checking for room elements")
-            room_elements = page.query_selector_all('div.room-container')
+            print("Checking for room name and price elements")
+            room_names = page.query_selector_all('td.name')
+            room_prices = page.query_selector_all('td.price')
             
-            logging.info(f"Found {len(room_elements)} room elements")
+            print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
             
-            if not room_elements:
-                logging.warning("No room data found. Dumping page content:")
-                logging.warning(page.content())
+            if not room_names or not room_prices:
+                print("No room data found. Dumping page content:")
+                print(page.content())
                 return None
             
             availability_data = []
-            for room in room_elements:
-                try:
-                    room_type = room.query_selector('.room-name').inner_text().strip()
-                    price_element = room.query_selector('.room-price')
-                    
-                    if price_element:
-                        price_text = price_element.inner_text().strip()
-                        logging.debug(f"Raw price text: {price_text}")
-                        
-                        price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_text)
-                        price = float(price_match.group(1)) if price_match else 0.00
-                        
-                        savings_match = re.search(r'You Save:?\s*\$(\d+(?:\.\d{2})?)', price_text, re.IGNORECASE)
-                        savings = float(savings_match.group(1)) if savings_match else 0.00
-                        
-                        cancellation_policy = "Free Cancellation" if "Free Cancellation" in price_text else "Non-refundable"
-                        free_cancellation_date = calculate_free_cancellation_date(check_in) if cancellation_policy == "Free Cancellation" else None
-                        
-                        availability_data.append({
-                            "room_type": room_type,
-                            "price": price,
-                            "savings": savings,
-                            "availability": "Available",
-                            "cancellation_policy": cancellation_policy,
-                            "free_cancellation_date": free_cancellation_date
-                        })
-                        
-                        logging.info(f"Scraped data for room: {room_type} - Price: ${price:.2f}, Savings: ${savings:.2f}")
-                    else:
-                        logging.warning(f"No price element found for room: {room_type}")
-                except Exception as e:
-                    logging.error(f"Error processing room element: {e}")
-                    logging.error(f"Room HTML: {room.inner_html()}")
+            for name, price in zip(room_names, room_prices):
+                room_type = name.inner_text().strip()
+                price_text = price.inner_text().strip()
+                
+                # Extract price and savings
+                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_text)
+                price = float(price_match.group(1)) if price_match else 0.00
+                
+                savings_match = re.search(r'You Save:\$(\d+(?:\.\d{2})?)', price_text)
+                savings = float(savings_match.group(1)) if savings_match else 0.00
+                
+                # Determine cancellation policy
+                cancellation_policy = "Free Cancellation" if "Free Cancellation" in price_text else "Non-refundable"
+                free_cancellation_date = calculate_free_cancellation_date(check_in) if cancellation_policy == "Free Cancellation" else None
+                
+                availability_data.append({
+                    "room_type": room_type,
+                    "price": price,
+                    "savings": savings,
+                    "availability": "Available",  # Assuming available if listed
+                    "cancellation_policy": cancellation_policy,
+                    "free_cancellation_date": free_cancellation_date
+                })
+                
+                print(f"Scraped data for room: {room_type} - Price: ${price:.2f}, Savings: ${savings:.2f}")
             
-            logging.info(f"Scraped availability data: {availability_data}")
+            print(f"Scraped availability data: {availability_data}")
             return availability_data
         
         except PlaywrightTimeoutError as e:
-            logging.error(f"Timeout error: {e}")
-            logging.error("Page content at time of error:")
-            logging.error(page.content())
+            print(f"Timeout error: {e}")
+            print("Page content at time of error:")
+            print(page.content())
             return None
         except Exception as e:
-            logging.error(f"Unexpected error: {e}")
-            logging.error("Page content at time of error:")
-            logging.error(page.content())
+            print(f"Unexpected error: {e}")
+            print("Page content at time of error:")
+            print(page.content())
             return None
         finally:
             if 'browser' in locals():
