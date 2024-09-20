@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 import logging
 from forex_python.converter import CurrencyRates, RatesNotAvailableError
 from requests.exceptions import RequestException
+from typing import List, Dict, Any
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -147,8 +148,7 @@ def parse_reservation_request(email_body):
 
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
-
-
+    
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
         check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
@@ -200,27 +200,37 @@ def get_exchangerate_api_rate():
     else:
         raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
 
-def get_exchange_rate():
+def get_exchange_rate() -> float:
     try:
-        return get_exchange_rate_with_retry(get_forex_python_rate)
-    except Exception as e:
-        logging.warning(f"forex-python failed after retries: {str(e)}")
+        c = CurrencyRates()
+        return c.get_rate('USD', 'EUR')
+    except RatesNotAvailableError:
+        logging.warning("forex-python API not available. Trying exchangerate-api.com...")
         try:
-            return get_exchange_rate_with_retry(get_exchangerate_api_rate)
+            api_key = os.environ.get('EXCHANGERATE_API_KEY')
+            if not api_key:
+                raise ValueError("EXCHANGERATE_API_KEY not set in environment variables")
+            url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            if data['result'] == 'success':
+                return data['conversion_rates']['EUR']
+            else:
+                raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
         except Exception as e:
-            logging.warning(f"exchangerate-api.com failed after retries: {str(e)}")
-            logging.info(f"Using fallback rate: {FALLBACK_USD_TO_EUR_RATE}")
-            return FALLBACK_USD_TO_EUR_RATE
+            logging.error(f"Failed to get exchange rate: {str(e)}")
+            return 0.92  # Fallback rate, update this periodically
 
-def add_euro_prices(availability_data):
+def add_euro_prices(availability_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     usd_to_eur_rate = get_exchange_rate()
     logging.info(f"Using USD to EUR rate: {usd_to_eur_rate}")
     
     for room in availability_data:
         for price_option in room['prices']:
-            if 'price_usd' not in price_option:
-                logging.warning(f"Missing 'price_usd' for room: {room.get('room_type', 'Unknown')}. Skipping EUR conversion.")
+            if 'price' not in price_option:
+                logging.warning(f"Missing 'price' for room: {room.get('room_type', 'Unknown')}. Skipping EUR conversion.")
                 continue
+            price_option['price_usd'] = price_option['price']
             price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
     
     return availability_data
@@ -339,9 +349,7 @@ def send_email(to_address, subject, body):
         print(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-def send_autoresponse(to_address, reservation_info, availability_data, is_greek_email):
-    availability_data = add_euro_prices(availability_data)
-    
+def send_autoresponse(to_address: str, reservation_info: Dict[str, Any], availability_data: List[Dict[str, Any]], is_greek_email: bool) -> None:
     if is_greek_email:
         subject = "Απάντηση στο Αίτημα Κράτησης"
         body = f"""
@@ -417,16 +425,16 @@ def send_error_notification(original_email, parse_result):
     
     send_email(recipient_email, subject, body)
 
-def process_email(email_body, sender_address):
-    print("Starting to process email")
+def process_email(email_body: str, sender_address: str) -> None:
+    logging.info("Starting to process email")
     is_greek_email = is_greek(email_body)
-    print(f"Email language: {'Greek' if is_greek_email else 'English'}")
+    logging.info(f"Email language: {'Greek' if is_greek_email else 'English'}")
     
     reservation_info = parse_reservation_request(email_body)
-    print(f"Parsed reservation info: {reservation_info}")
+    logging.info(f"Parsed reservation info: {reservation_info}")
     
     if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        print("Reservation dates found, proceeding to web scraping")
+        logging.info("Reservation dates found, proceeding to web scraping")
         
         availability_data = scrape_thekokoon_availability(
             reservation_info['check_in'],
@@ -434,16 +442,18 @@ def process_email(email_body, sender_address):
             reservation_info.get('adults', 2),
             reservation_info.get('children', 0)
         )
-        print(f"Web scraping result: {availability_data}")
+        logging.info(f"Web scraping result: {availability_data}")
         
         if availability_data:
-            print("Availability data found, sending detailed response")
+            logging.info("Availability data found, adding euro prices")
+            availability_data = add_euro_prices(availability_data)
+            logging.info("Sending detailed response")
             send_autoresponse(sender_address, reservation_info, availability_data, is_greek_email)
         else:
-            print("No availability data found, sending partial information response")
+            logging.info("No availability data found, sending partial information response")
             send_partial_info_response(sender_address, reservation_info, is_greek_email)
     else:
-        print("Failed to parse reservation dates. Sending error notification.")
+        logging.warning("Failed to parse reservation dates. Sending error notification.")
         send_error_notification(email_body, reservation_info)
         generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
         generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
@@ -451,7 +461,7 @@ def process_email(email_body, sender_address):
                         "Thank you for your reservation request. Our team will review it and get back to you shortly.")
         send_email(sender_address, generic_subject, generic_body)
 
-    print("Email processing completed")
+    logging.info("Email processing completed")
 
 def send_partial_info_response(to_address, reservation_info, is_greek_email):
     if is_greek_email:
