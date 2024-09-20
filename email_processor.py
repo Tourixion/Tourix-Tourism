@@ -173,12 +173,12 @@ def get_exchange_rate_with_retry(method):
         try:
             return method()
         except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {str(e)}")
+            logging.warning(f"Attempt {attempt + 1} failed: {str(e)}")
             if attempt < MAX_RETRIES - 1:
-                print(f"Retrying in {RETRY_DELAY} seconds...")
+                logging.info(f"Retrying in {RETRY_DELAY} seconds...")
                 time.sleep(RETRY_DELAY)
             else:
-                print("All attempts failed.")
+                logging.error("All attempts failed.")
                 raise
 
 def get_forex_python_rate():
@@ -192,36 +192,39 @@ def get_exchangerate_api_rate():
     
     url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
     response = requests.get(url, timeout=10)
+    response.raise_for_status()  # This will raise an exception for HTTP errors
     data = response.json()
     
     if data['result'] == 'success':
         return data['conversion_rates']['EUR']
     else:
-        raise Exception(f"API request failed: {data['error-type']}")
+        raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
 
 def get_exchange_rate():
     try:
         return get_exchange_rate_with_retry(get_forex_python_rate)
     except Exception as e:
-        print(f"forex-python failed after retries: {str(e)}")
+        logging.warning(f"forex-python failed after retries: {str(e)}")
         try:
             return get_exchange_rate_with_retry(get_exchangerate_api_rate)
         except Exception as e:
-            print(f"exchangerate-api.com failed after retries: {str(e)}")
-            print(f"Using fallback rate: {FALLBACK_USD_TO_EUR_RATE}")
+            logging.warning(f"exchangerate-api.com failed after retries: {str(e)}")
+            logging.info(f"Using fallback rate: {FALLBACK_USD_TO_EUR_RATE}")
             return FALLBACK_USD_TO_EUR_RATE
 
 def add_euro_prices(availability_data):
     usd_to_eur_rate = get_exchange_rate()
-    print(f"Using USD to EUR rate: {usd_to_eur_rate}")
+    logging.info(f"Using USD to EUR rate: {usd_to_eur_rate}")
     
     for room in availability_data:
         for price_option in room['prices']:
+            if 'price_usd' not in price_option:
+                logging.warning(f"Missing 'price_usd' for room: {room.get('room_type', 'Unknown')}. Skipping EUR conversion.")
+                continue
             price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
     
     return availability_data
 
-    
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
