@@ -17,6 +17,7 @@ import time
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import traceback
 from datetime import datetime, timedelta
+import logging
 
 def calculate_free_cancellation_date(check_in_date):
     # Convert string to datetime if necessary
