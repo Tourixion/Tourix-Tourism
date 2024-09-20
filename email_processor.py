@@ -226,6 +226,10 @@ def get_exchange_rate() -> float:
             raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
     except Exception as e:
         logging.error(f"Failed to get exchange rate from exchangerate-api.com: {str(e)}")
+
+    fallback_rate = 0.92  # Update this periodically
+    logging.warning(f"Using fallback exchange rate: {fallback_rate}")
+    return fallback_rate
             
 def add_euro_prices(availability_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     usd_to_eur_rate = get_exchange_rate()
