@@ -376,7 +376,6 @@ def send_autoresponse(to_address: str, reservation_info: Dict[str, Any], availab
         Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
 
         Με βάση το αίτημά σας, έχουμε τις ακόλουθες διαθέσιμες επιλογές:
-
         """
         for room in availability_data:
             body += f"\nΤύπος δωματίου: {room['room_type']}\n"
@@ -386,6 +385,15 @@ def send_autoresponse(to_address: str, reservation_info: Dict[str, Any], availab
                 body += f"  Πολιτική ακύρωσης: {price_option['cancellation_policy']}\n"
                 if price_option['free_cancellation_date']:
                     body += f"  Δωρεάν ακύρωση έως: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
+        
+        body += """
+        Παρακαλούμε σημειώστε ότι αυτές οι πληροφορίες βασίζονται στην τρέχουσα διαθεσιμότητα και μπορεί να αλλάξουν.
+        Υπενθύμιση: Οι τιμές περιλαμβάνουν όλους τους φόρους και τα τέλη.
+        Εάν επιθυμείτε να προχωρήσετε με την κράτηση ή έχετε περαιτέρω ερωτήσεις, παρακαλούμε μη διστάσετε να επικοινωνήσετε μαζί μας.
+
+        Με εκτίμηση,
+        Η ομάδα του Kokoon Volos
+        """
     else:
         subject = "Response to Your Reservation Request"
         body = f"""
@@ -399,7 +407,6 @@ def send_autoresponse(to_address: str, reservation_info: Dict[str, Any], availab
         Number of children: {reservation_info.get('children', 'Not specified')}
 
         Based on your request, we have the following available options:
-
         """
         for room in availability_data:
             body += f"\nRoom type: {room['room_type']}\n"
@@ -409,15 +416,15 @@ def send_autoresponse(to_address: str, reservation_info: Dict[str, Any], availab
                 body += f"  Cancellation policy: {price_option['cancellation_policy']}\n"
                 if price_option['free_cancellation_date']:
                     body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
-    
-    body += """
-    Please note that this information is based on current availability and may change.
+        
+        body += """
+        Please note that this information is based on current availability and may change.
+        Reminder: Prices include all taxes & fees.
+        If you wish to proceed with the booking or have any further questions, please don't hesitate to contact us.
 
-    If you wish to proceed with the booking or have any further questions, please don't hesitate to contact us.
-
-    Best regards,
-    The Kokoon Volos Team
-    """
+        Best regards,
+        The Kokoon Volos Team
+        """
 
     send_email(to_address, subject, body)
     
