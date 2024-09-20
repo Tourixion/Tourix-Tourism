@@ -16,7 +16,23 @@ import sys
 import time
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import traceback
+from datetime import datetime, timedelta
 
+def calculate_free_cancellation_date(check_in_date):
+    # Convert string to datetime if necessary
+    if isinstance(check_in_date, str):
+        check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
+    
+    # Calculate the free cancellation date (20 days before check-in)
+    free_cancellation_date = check_in_date - timedelta(days=20)
+    
+    # Adjust for the specific rule about November 9th and 10th
+    if check_in_date.month == 11:
+        if check_in_date.day == 9:
+            free_cancellation_date = datetime(check_in_date.year, 10, 20).date()
+        elif check_in_date.day == 10:
+            free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
+            
 def connect_to_imap(email_address, password, imap_server, imap_port=993):
     print(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
     
@@ -150,50 +166,41 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             print("Waiting for page to load completely")
             page.wait_for_load_state('networkidle')
             
-            print("Checking for room name and price elements")
-            room_names = page.query_selector_all('td.name')
-            room_prices = page.query_selector_all('td.price')
+            print("Checking for room elements")
+            room_elements = page.query_selector_all('tr.room_details')
             
-            print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
+            print(f"Found {len(room_elements)} room elements")
             
-            if not room_names or not room_prices:
+            if not room_elements:
                 print("No room data found. Dumping page content:")
                 print(page.content())
                 return None
             
             availability_data = []
-            current_room_type = None
-            for name, price in zip(room_names, room_prices):
-                room_type = name.inner_text().strip()
-                price_text = price.inner_text().strip()
+            for room in room_elements:
+                room_type = room.query_selector('td.name').inner_text().strip()
+                price_element = room.query_selector('td.price')
                 
-                # Remove "Book Now" and extract price and savings
-                price_info = re.search(r'\$(\d+\.\d+).*?You Save:\$(\d+\.\d+)', price_text)
-                if price_info:
-                    price = float(price_info.group(1))
-                    savings = float(price_info.group(2))
-                else:
-                    price = 0
-                    savings = 0
+                price_text = price_element.inner_text().strip()
+                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_text)
+                price = float(price_match.group(1)) if price_match else 0.00
                 
-                # Check if this is a new room type or a variation of the previous one
-                if room_type == current_room_type:
-                    availability_data[-1]['variations'].append({
-                        "price": price,
-                        "savings": savings,
-                        "cancellation": "Free Cancellation"
-                    })
-                else:
-                    availability_data.append({
-                        "room_type": room_type,
-                        "price": price,
-                        "savings": savings,
-                        "availability": "Available",
-                        "variations": []
-                    })
-                    current_room_type = room_type
+                savings_match = re.search(r'You Save:\$(\d+(?:\.\d{2})?)', price_text)
+                savings = float(savings_match.group(1)) if savings_match else 0.00
                 
-                print(f"Scraped data for room: {room_type} - Price: ${price:.2f}")
+                cancellation_policy = "Free Cancellation" if "Free Cancellation" in price_text else "Non-refundable"
+                free_cancellation_date = calculate_free_cancellation_date(check_in) if cancellation_policy == "Free Cancellation" else None
+                
+                availability_data.append({
+                    "room_type": room_type,
+                    "price": price,
+                    "savings": savings,
+                    "availability": "Available",
+                    "cancellation_policy": cancellation_policy,
+                    "free_cancellation_date": free_cancellation_date
+                })
+                
+                print(f"Scraped data for room: {room_type} - Price: ${price:.2f}, Savings: ${savings:.2f}")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -255,10 +262,9 @@ def send_autoresponse(to_address, reservation_info, availability_data, is_greek_
             body += f"Τιμή: ${room['price']:.2f}\n"
             body += f"Εξοικονόμηση: ${room['savings']:.2f}\n"
             body += f"Διαθεσιμότητα: {room['availability']}\n"
-            if room['variations']:
-                body += "Επιλογές:\n"
-                for var in room['variations']:
-                    body += f"  - Τιμή: ${var['price']:.2f}, Εξοικονόμηση: ${var['savings']:.2f}, {var['cancellation']}\n"
+            body += f"Πολιτική ακύρωσης: {room['cancellation_policy']}\n"
+            if room['free_cancellation_date']:
+                body += f"Δωρεάν ακύρωση έως: {room['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
     else:
         subject = "Response to Your Reservation Request"
         body = f"""
@@ -279,10 +285,9 @@ def send_autoresponse(to_address, reservation_info, availability_data, is_greek_
             body += f"Price: ${room['price']:.2f}\n"
             body += f"You Save: ${room['savings']:.2f}\n"
             body += f"Availability: {room['availability']}\n"
-            if room['variations']:
-                body += "Options:\n"
-                for var in room['variations']:
-                    body += f"  - Price: ${var['price']:.2f}, You Save: ${var['savings']:.2f}, {var['cancellation']}\n"
+            body += f"Cancellation policy: {room['cancellation_policy']}\n"
+            if room['free_cancellation_date']:
+                body += f"Free cancellation until: {room['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
     
     body += """
     Please note that this information is based on current availability and may change.
