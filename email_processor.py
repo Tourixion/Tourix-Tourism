@@ -166,55 +166,54 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             print("Waiting for page to load completely")
             page.wait_for_load_state('networkidle')
             
-            print("Checking for room elements")
-            room_elements = page.query_selector_all('tr.room_details')
+            print("Checking for room name and price elements")
+            room_names = page.query_selector_all('td.name')
+            room_prices = page.query_selector_all('td.price')
             
-            print(f"Found {len(room_elements)} room elements")
+            print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
             
-            if not room_elements:
+            if not room_names or not room_prices:
                 print("No room data found. Dumping page content:")
                 print(page.content())
                 return None
             
             availability_data = []
-            current_room_type = None
-            current_room_data = None
-            
-            for room in room_elements:
-                room_type = room.query_selector('td.name').inner_text().strip()
-                price_element = room.query_selector('td.price')
+            for i in range(0, len(room_names), 2):  # Process two rows at a time
+                room_type = room_names[i].inner_text().strip()
+                price1_text = room_prices[i].inner_text().strip()
+                price2_text = room_prices[i+1].inner_text().strip() if i+1 < len(room_prices) else None
                 
-                price_text = price_element.inner_text().strip()
-                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_text)
-                price = float(price_match.group(1)) if price_match else 0.00
+                price1_match = re.search(r'\$(\d+(?:\.\d{2})?)', price1_text)
+                price1 = float(price1_match.group(1)) if price1_match else 0.00
                 
-                cancellation_policy = "Free Cancellation" if "Free Cancellation" in price_text else "Non-refundable"
-                free_cancellation_date = calculate_free_cancellation_date(check_in) if cancellation_policy == "Free Cancellation" else None
+                cancellation_policy1 = "Free Cancellation" if "Free Cancellation" in price1_text else "Non-refundable"
+                free_cancellation_date1 = calculate_free_cancellation_date(check_in) if cancellation_policy1 == "Free Cancellation" else None
                 
-                if room_type != current_room_type:
-                    if current_room_data:
-                        availability_data.append(current_room_data)
-                    current_room_type = room_type
-                    current_room_data = {
-                        "room_type": room_type,
-                        "prices": [{
-                            "price": price,
-                            "cancellation_policy": cancellation_policy,
-                            "free_cancellation_date": free_cancellation_date
-                        }],
-                        "availability": "Available"
-                    }
-                else:
-                    current_room_data["prices"].append({
-                        "price": price,
-                        "cancellation_policy": cancellation_policy,
-                        "free_cancellation_date": free_cancellation_date
+                room_data = {
+                    "room_type": room_type,
+                    "prices": [{
+                        "price": price1,
+                        "cancellation_policy": cancellation_policy1,
+                        "free_cancellation_date": free_cancellation_date1
+                    }],
+                    "availability": "Available"
+                }
+                
+                if price2_text:
+                    price2_match = re.search(r'\$(\d+(?:\.\d{2})?)', price2_text)
+                    price2 = float(price2_match.group(1)) if price2_match else 0.00
+                    
+                    cancellation_policy2 = "Free Cancellation" if "Free Cancellation" in price2_text else "Non-refundable"
+                    free_cancellation_date2 = calculate_free_cancellation_date(check_in) if cancellation_policy2 == "Free Cancellation" else None
+                    
+                    room_data["prices"].append({
+                        "price": price2,
+                        "cancellation_policy": cancellation_policy2,
+                        "free_cancellation_date": free_cancellation_date2
                     })
                 
-                print(f"Scraped data for room: {room_type} - Price: ${price:.2f}")
-            
-            if current_room_data:
-                availability_data.append(current_room_data)
+                availability_data.append(room_data)
+                print(f"Scraped data for room: {room_type} - Price 1: ${price1:.2f}, Price 2: ${price2:.2f if price2_text else 0.00}")
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -232,7 +231,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         finally:
             if 'browser' in locals():
                 browser.close()
-
+                
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
