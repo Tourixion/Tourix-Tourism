@@ -19,6 +19,7 @@ import traceback
 from datetime import datetime, timedelta
 import logging
 from forex_python.converter import CurrencyRates, RatesNotAvailableError
+from requests.exceptions import RequestException
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -162,45 +163,63 @@ def calculate_free_cancellation_date(check_in_date):
     
     return free_cancellation_date
     
-def get_exchange_rate():
-    # Try forex-python first
-    try:
-        c = CurrencyRates()
-        return c.get_rate('USD', 'EUR')
-    except RatesNotAvailableError:
-        print("forex-python API not available. Trying exchangerate-api.com...")
 
-    # If forex-python fails, try exchangerate-api.com
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # seconds
+FALLBACK_USD_TO_EUR_RATE = 0.92  # Update this periodically
+
+def get_exchange_rate_with_retry(method):
+    for attempt in range(MAX_RETRIES):
+        try:
+            return method()
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {str(e)}")
+            if attempt < MAX_RETRIES - 1:
+                print(f"Retrying in {RETRY_DELAY} seconds...")
+                time.sleep(RETRY_DELAY)
+            else:
+                print("All attempts failed.")
+                raise
+
+def get_forex_python_rate():
+    c = CurrencyRates()
+    return c.get_rate('USD', 'EUR')
+
+def get_exchangerate_api_rate():
+    api_key = os.environ.get('EXCHANGERATE_API_KEY')
+    if not api_key:
+        raise ValueError("EXCHANGERATE_API_KEY not set in environment variables")
+    
+    url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
+    response = requests.get(url, timeout=10)
+    data = response.json()
+    
+    if data['result'] == 'success':
+        return data['conversion_rates']['EUR']
+    else:
+        raise Exception(f"API request failed: {data['error-type']}")
+
+def get_exchange_rate():
     try:
-        api_key = os.environ.get('EXCHANGERATE_API_KEY')
-        if not api_key:
-            raise ValueError("EXCHANGERATE_API_KEY not set in environment variables")
-        
-        url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
-        response = requests.get(url)
-        data = response.json()
-        
-        if data['result'] == 'success':
-            return data['conversion_rates']['EUR']
-        else:
-            raise Exception(f"API request failed: {data['error-type']}")
+        return get_exchange_rate_with_retry(get_forex_python_rate)
     except Exception as e:
-        print(f"Error fetching exchange rate from exchangerate-api.com: {str(e)}")
-        raise
+        print(f"forex-python failed after retries: {str(e)}")
+        try:
+            return get_exchange_rate_with_retry(get_exchangerate_api_rate)
+        except Exception as e:
+            print(f"exchangerate-api.com failed after retries: {str(e)}")
+            print(f"Using fallback rate: {FALLBACK_USD_TO_EUR_RATE}")
+            return FALLBACK_USD_TO_EUR_RATE
 
 def add_euro_prices(availability_data):
-    try:
-        usd_to_eur_rate = get_exchange_rate()
-        print(f"Current USD to EUR rate: {usd_to_eur_rate}")
-        
-        for room in availability_data:
-            for price_option in room['prices']:
-                price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
-        
-        return availability_data
-    except Exception as e:
-        print(f"Failed to get exchange rate: {str(e)}")
-        raise
+    usd_to_eur_rate = get_exchange_rate()
+    print(f"Using USD to EUR rate: {usd_to_eur_rate}")
+    
+    for room in availability_data:
+        for price_option in room['prices']:
+            price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
+    
+    return availability_data
 
     
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
