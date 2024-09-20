@@ -146,6 +146,21 @@ def parse_reservation_request(email_body):
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
+
+def calculate_free_cancellation_date(check_in_date):
+    if isinstance(check_in_date, str):
+        check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
+    
+    free_cancellation_date = check_in_date - timedelta(days=20)
+    
+    if check_in_date.month == 11:
+        if check_in_date.day == 9:
+            free_cancellation_date = datetime(check_in_date.year, 10, 20).date()
+        elif check_in_date.day == 10:
+            free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
+    
+    return free_cancellation_date
+
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
@@ -172,48 +187,53 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             
             print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
             
-            if not room_names or not room_prices:
-                print("No room data found. Dumping page content:")
+            if not room_names or not room_prices or len(room_prices) != len(room_names) * 2:
+                print("Unexpected number of room names or prices. Dumping page content:")
                 print(page.content())
                 return None
             
             availability_data = []
-            for i in range(0, len(room_names), 2):  # Process two rows at a time
-                room_type = room_names[i].inner_text().strip()
-                price1_text = room_prices[i].inner_text().strip()
-                price2_text = room_prices[i+1].inner_text().strip() if i+1 < len(room_prices) else None
-                
-                price1_match = re.search(r'\$(\d+(?:\.\d{2})?)', price1_text)
-                price1 = float(price1_match.group(1)) if price1_match else 0.00
-                
-                cancellation_policy1 = "Free Cancellation" if "Free Cancellation" in price1_text else "Non-refundable"
-                free_cancellation_date1 = calculate_free_cancellation_date(check_in) if cancellation_policy1 == "Free Cancellation" else None
-                
-                room_data = {
-                    "room_type": room_type,
-                    "prices": [{
-                        "price": price1,
-                        "cancellation_policy": cancellation_policy1,
-                        "free_cancellation_date": free_cancellation_date1
-                    }],
-                    "availability": "Available"
-                }
-                
-                if price2_text:
+            for i in range(0, len(room_names)):
+                try:
+                    room_type = room_names[i].inner_text().strip()
+                    price1_text = room_prices[i*2].inner_text().strip()
+                    price2_text = room_prices[i*2 + 1].inner_text().strip()
+                    
+                    price1_match = re.search(r'\$(\d+(?:\.\d{2})?)', price1_text)
                     price2_match = re.search(r'\$(\d+(?:\.\d{2})?)', price2_text)
-                    price2 = float(price2_match.group(1)) if price2_match else 0.00
                     
-                    cancellation_policy2 = "Free Cancellation" if "Free Cancellation" in price2_text else "Non-refundable"
-                    free_cancellation_date2 = calculate_free_cancellation_date(check_in) if cancellation_policy2 == "Free Cancellation" else None
-                    
-                    room_data["prices"].append({
-                        "price": price2,
-                        "cancellation_policy": cancellation_policy2,
-                        "free_cancellation_date": free_cancellation_date2
-                    })
-                
-                availability_data.append(room_data)
-                print(f"Scraped data for room: {room_type} - Price 1: ${price1:.2f}, Price 2: ${price2:.2f if price2_text else 0.00}")
+                    if price1_match and price2_match:
+                        price1 = float(price1_match.group(1))
+                        price2 = float(price2_match.group(1))
+                        
+                        free_cancellation_date = calculate_free_cancellation_date(check_in)
+                        
+                        room_data = {
+                            "room_type": room_type,
+                            "prices": [
+                                {
+                                    "price": price1,
+                                    "cancellation_policy": "Non-refundable",
+                                    "free_cancellation_date": None
+                                },
+                                {
+                                    "price": price2,
+                                    "cancellation_policy": "Free Cancellation",
+                                    "free_cancellation_date": free_cancellation_date
+                                }
+                            ],
+                            "availability": "Available"
+                        }
+                        
+                        availability_data.append(room_data)
+                        print(f"Scraped data for room: {room_type}")
+                        print(f"  Non-refundable Price: ${price1:.2f}")
+                        print(f"  Free Cancellation Price: ${price2:.2f}")
+                    else:
+                        print(f"Could not extract prices for room: {room_type}")
+                except Exception as e:
+                    print(f"Error processing room {i + 1}:")
+                    print(traceback.format_exc())
             
             print(f"Scraped availability data: {availability_data}")
             return availability_data
@@ -224,7 +244,9 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
             print(page.content())
             return None
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            print(f"Unexpected error: {type(e).__name__}: {e}")
+            print("Traceback:")
+            print(traceback.format_exc())
             print("Page content at time of error:")
             print(page.content())
             return None
