@@ -21,6 +21,7 @@ import logging
 from forex_python.converter import CurrencyRates, RatesNotAvailableError
 from requests.exceptions import RequestException
 from typing import List, Dict, Any
+from json.decoder import JSONDecodeError
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -200,6 +201,7 @@ def get_exchangerate_api_rate():
     else:
         raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
 
+
 def get_exchange_rate() -> float:
     logging.info("Attempting to get exchange rate")
     try:
@@ -207,7 +209,7 @@ def get_exchange_rate() -> float:
         rate = c.get_rate('USD', 'EUR')
         logging.info(f"Successfully got rate from forex-python: {rate}")
         return rate
-    except (RatesNotAvailableError, ValueError, RequestException, JSONDecodeError) as e:
+    except Exception as e:
         logging.warning(f"forex-python API failed: {str(e)}. Trying exchangerate-api.com...")
 
     try:
@@ -227,10 +229,11 @@ def get_exchange_rate() -> float:
     except Exception as e:
         logging.error(f"Failed to get exchange rate from exchangerate-api.com: {str(e)}")
 
+    # Fallback to a static rate if both methods fail
     fallback_rate = 0.92  # Update this periodically
     logging.warning(f"Using fallback exchange rate: {fallback_rate}")
     return fallback_rate
-            
+
 def add_euro_prices(availability_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     usd_to_eur_rate = get_exchange_rate()
     logging.info(f"Using USD to EUR rate: {usd_to_eur_rate}")
@@ -244,7 +247,6 @@ def add_euro_prices(availability_data: List[Dict[str, Any]]) -> List[Dict[str, A
             price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
     
     return availability_data
-
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
