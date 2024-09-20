@@ -18,6 +18,8 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import traceback
 from datetime import datetime, timedelta
 import logging
+from forex_python.converter import CurrencyRates
+
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -160,7 +162,17 @@ def calculate_free_cancellation_date(check_in_date):
             free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
     
     return free_cancellation_date
-
+    
+def add_euro_prices(availability_data):
+    c = CurrencyRates()
+    usd_to_eur_rate = c.get_rate('USD', 'EUR')
+    
+    for room in availability_data:
+        for price_option in room['prices']:
+            price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
+    
+    return availability_data
+    
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
@@ -276,6 +288,8 @@ def send_email(to_address, subject, body):
         raise
 
 def send_autoresponse(to_address, reservation_info, availability_data, is_greek_email):
+    availability_data = add_euro_prices(availability_data)
+    
     if is_greek_email:
         subject = "Απάντηση στο Αίτημα Κράτησης"
         body = f"""
@@ -295,7 +309,7 @@ def send_autoresponse(to_address, reservation_info, availability_data, is_greek_
             body += f"\nΤύπος δωματίου: {room['room_type']}\n"
             body += f"Διαθεσιμότητα: {room['availability']}\n"
             for price_option in room['prices']:
-                body += f"  Τιμή: ${price_option['price']:.2f}\n"
+                body += f"  Τιμή: ${price_option['price_usd']:.2f} / €{price_option['price_eur']:.2f}\n"
                 body += f"  Πολιτική ακύρωσης: {price_option['cancellation_policy']}\n"
                 if price_option['free_cancellation_date']:
                     body += f"  Δωρεάν ακύρωση έως: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
@@ -318,7 +332,7 @@ def send_autoresponse(to_address, reservation_info, availability_data, is_greek_
             body += f"\nRoom type: {room['room_type']}\n"
             body += f"Availability: {room['availability']}\n"
             for price_option in room['prices']:
-                body += f"  Price: ${price_option['price']:.2f}\n"
+                body += f"  Price: ${price_option['price_usd']:.2f} / €{price_option['price_eur']:.2f}\n"
                 body += f"  Cancellation policy: {price_option['cancellation_policy']}\n"
                 if price_option['free_cancellation_date']:
                     body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
