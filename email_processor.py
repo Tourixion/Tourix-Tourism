@@ -250,7 +250,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
     
     return all_availability_data
 
-def send_email(to_address, subject, body):
+def send_email(to_address: str, subject: str, body: str) -> None:
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
     sender_email = os.environ['EMAIL_ADDRESS']
@@ -270,22 +270,6 @@ def send_email(to_address, subject, body):
     except Exception as e:
         logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
-
-    for currency, rooms in availability_data.items():
-        body += f"\nPrices in {currency}:\n"
-        for room in rooms:
-            body += f"\nRoom type: {room['room_type']}\n"
-            body += f"Availability: {room['availability']}\n"
-            for price_option in room['prices']:
-                body += f"  Price: {price_option[f'price_{currency.lower()}']:.2f} {currency}\n"
-                body += f"  Cancellation policy: {price_option['cancellation_policy']}\n"
-                if price_option['free_cancellation_date']:
-                    body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
-    
-    body += "\nPlease process this request and respond to the customer as appropriate."
-
-    send_email(staff_email, subject, body)
-
 
 def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: Dict[str, List[Dict[str, Any]]], is_greek_email: bool) -> None:
     if is_greek_email:
@@ -329,7 +313,6 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
     body += "\nPlease process this request and respond to the customer as appropriate."
 
     send_email(staff_email, subject, body)
-
 
 def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool) -> None:
     if is_greek_email:
@@ -409,46 +392,6 @@ def process_email(email_body: str, sender_address: str) -> None:
         send_error_notification(email_body, reservation_info)
     
     logging.info("Email processing completed")
-
-def main():
-    logging.info("Starting email processor script")
-    email_address = os.environ['EMAIL_ADDRESS']
-    password = os.environ['EMAIL_PASSWORD']
-    imap_server = 'mail.kokoonvolos.gr'
-    imap_port = 993
-
-    logging.info(f"Email Address: {email_address}")
-    logging.info(f"IMAP Server: {imap_server}")
-    logging.info(f"IMAP Port: {imap_port}")
-
-    try:
-        imap = connect_to_imap(email_address, password, imap_server, imap_port)
-        imap.select("INBOX")
-
-        _, message_numbers = imap.search(None, "UNSEEN")
-        if not message_numbers[0]:
-            logging.info("No new messages found.")
-        else:
-            for num in message_numbers[0].split():
-                logging.info(f"Processing message number: {num}")
-                _, msg = imap.fetch(num, "(RFC822)")
-                email_msg = email.message_from_bytes(msg[0][1])
-                
-                sender_address = email.utils.parseaddr(email_msg['From'])[1]
-                logging.info(f"Sender: {sender_address}")
-                
-                email_body = get_email_content(email_msg)
-                logging.info("Email body retrieved")
-                
-                process_email(email_body, sender_address)
-                logging.info(f"Finished processing message number: {num}")
-
-        imap.logout()
-        logging.info("Email processing completed successfully")
-    except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
-        logging.error(traceback.format_exc())
-        raise
 
 if __name__ == "__main__":
     main()
