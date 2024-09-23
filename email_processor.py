@@ -271,7 +271,7 @@ def send_email(to_address, subject, body):
         logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-for currency, rooms in availability_data.items():
+    for currency, rooms in availability_data.items():
         body += f"\nPrices in {currency}:\n"
         for room in rooms:
             body += f"\nRoom type: {room['room_type']}\n"
@@ -285,6 +285,51 @@ for currency, rooms in availability_data.items():
     body += "\nPlease process this request and respond to the customer as appropriate."
 
     send_email(staff_email, subject, body)
+
+
+def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: Dict[str, List[Dict[str, Any]]], is_greek_email: bool) -> None:
+    if is_greek_email:
+        subject = f"Νέο Αίτημα Κράτησης - {customer_email}"
+        body = f"""
+        Λήφθηκε νέο αίτημα κράτησης από {customer_email}.
+
+        Λεπτομέρειες κράτησης:
+        Ημερομηνία άφιξης: {reservation_info['check_in']}
+        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
+        Αριθμός ενηλίκων: {reservation_info['adults']}
+        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
+
+        Διαθέσιμες επιλογές:
+        """
+    else:
+        subject = f"New Reservation Request - {customer_email}"
+        body = f"""
+        A new reservation request has been received from {customer_email}.
+
+        Reservation details:
+        Check-in date: {reservation_info['check_in']}
+        Check-out date: {reservation_info['check_out']}
+        Number of adults: {reservation_info['adults']}
+        Number of children: {reservation_info.get('children', 'Not specified')}
+
+        Available options:
+        """
+    
+    for currency, rooms in availability_data.items():
+        body += f"\nPrices in {currency}:\n"
+        for room in rooms:
+            body += f"\nRoom type: {room['room_type']}\n"
+            body += f"Availability: {room['availability']}\n"
+            for price_option in room['prices']:
+                body += f"  Price: {price_option[f'price_{currency.lower()}']:.2f} {currency}\n"
+                body += f"  Cancellation policy: {price_option['cancellation_policy']}\n"
+                if price_option['free_cancellation_date']:
+                    body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
+    
+    body += "\nPlease process this request and respond to the customer as appropriate."
+
+    send_email(staff_email, subject, body)
+
 
 def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool) -> None:
     if is_greek_email:
