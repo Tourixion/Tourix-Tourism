@@ -18,8 +18,6 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import traceback
 from datetime import datetime, timedelta
 import logging
-from forex_python.converter import CurrencyRates, RatesNotAvailableError
-from requests.exceptions import RequestException
 from typing import List, Dict, Any
 from json.decoder import JSONDecodeError
 
@@ -163,184 +161,194 @@ def calculate_free_cancellation_date(check_in_date):
             free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
     
     return free_cancellation_date
-    
-
-MAX_RETRIES = 3
-RETRY_DELAY = 5  # seconds
-FALLBACK_USD_TO_EUR_RATE = 0.92  # Update this periodically
-
-def get_exchange_rate_with_retry(method):
-    for attempt in range(MAX_RETRIES):
-        try:
-            return method()
-        except Exception as e:
-            logging.warning(f"Attempt {attempt + 1} failed: {str(e)}")
-            if attempt < MAX_RETRIES - 1:
-                logging.info(f"Retrying in {RETRY_DELAY} seconds...")
-                time.sleep(RETRY_DELAY)
-            else:
-                logging.error("All attempts failed.")
-                raise
-
-def get_forex_python_rate():
-    c = CurrencyRates()
-    return c.get_rate('USD', 'EUR')
-
-def get_exchangerate_api_rate():
-    api_key = os.environ.get('EXCHANGERATE_API_KEY')
-    if not api_key:
-        raise ValueError("EXCHANGERATE_API_KEY not set in environment variables")
-    
-    url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()  # This will raise an exception for HTTP errors
-    data = response.json()
-    
-    if data['result'] == 'success':
-        return data['conversion_rates']['EUR']
-    else:
-        raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
-
-
-def get_exchange_rate() -> float:
-    logging.info("Attempting to get exchange rate")
-    try:
-        c = CurrencyRates()
-        rate = c.get_rate('USD', 'EUR')
-        logging.info(f"Successfully got rate from forex-python: {rate}")
-        return rate
-    except Exception as e:
-        logging.warning(f"forex-python API failed: {str(e)}. Trying exchangerate-api.com...")
-
-    try:
-        api_key = os.environ.get('EXCHANGERATE_API_KEY')
-        if not api_key:
-            raise ValueError("EXCHANGERATE_API_KEY not set in environment variables")
-        url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/USD"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()  # Raises an HTTPError for bad responses
-        data = response.json()
-        if data['result'] == 'success':
-            rate = data['conversion_rates']['EUR']
-            logging.info(f"Successfully got rate from exchangerate-api.com: {rate}")
-            return rate
-        else:
-            raise Exception(f"API request failed: {data.get('error-type', 'Unknown error')}")
-    except Exception as e:
-        logging.error(f"Failed to get exchange rate from exchangerate-api.com: {str(e)}")
-
-    # Fallback to a static rate if both methods fail
-    fallback_rate = 0.92  # Update this periodically
-    logging.warning(f"Using fallback exchange rate: {fallback_rate}")
-    return fallback_rate
-
-def add_euro_prices(availability_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    usd_to_eur_rate = get_exchange_rate()
-    logging.info(f"Using USD to EUR rate: {usd_to_eur_rate}")
-    
-    for room in availability_data:
-        for price_option in room['prices']:
-            if 'price' not in price_option:
-                logging.warning(f"Missing 'price' for room: {room.get('room_type', 'Unknown')}. Skipping EUR conversion.")
-                continue
-            price_option['price_usd'] = price_option['price']
-            price_option['price_eur'] = round(price_option['price_usd'] * usd_to_eur_rate, 2)
-    
-    return availability_data
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
-    url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
+    base_url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
-        url += f"&children={children}"
+        base_url += f"&children={children}"
     
-    print(f"Attempting to scrape availability data from {url}")
+    currencies = ['EUR', 'USD']
+    all_availability_data = {}
     
     with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.set_default_timeout(60000)  # Increase timeout to 60 seconds
-            
-            print(f"Navigating to {url}")
-            response = page.goto(url)
-            print(f"Navigation complete. Status: {response.status}")
-            
-            print("Waiting for page to load completely")
-            page.wait_for_load_state('networkidle')
-            
-            print("Checking for room name and price elements")
-            room_names = page.query_selector_all('td.name')
-            room_prices = page.query_selector_all('td.price')
-            
-            print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
-            
-            if not room_names or not room_prices or len(room_prices) != len(room_names) * 2:
-                print("Unexpected number of room names or prices. Dumping page content:")
-                print(page.content())
-                return None
-            
-            availability_data = []
-            for i in range(0, len(room_names)):
-                try:
-                    room_type = room_names[i].inner_text().strip()
-                    price1_text = room_prices[i*2].inner_text().strip()
-                    price2_text = room_prices[i*2 + 1].inner_text().strip()
-                    
-                    price1_match = re.search(r'\$(\d+(?:\.\d{2})?)', price1_text)
-                    price2_match = re.search(r'\$(\d+(?:\.\d{2})?)', price2_text)
-                    
-                    if price1_match and price2_match:
-                        price1 = float(price1_match.group(1))
-                        price2 = float(price2_match.group(1))
-                        
-                        free_cancellation_date = calculate_free_cancellation_date(check_in)
-                        
-                        room_data = {
-                            "room_type": room_type,
-                            "prices": [
-                                {
-                                    "price": price1,
-                                    "cancellation_policy": "Non-refundable",
-                                    "free_cancellation_date": None
-                                },
-                                {
-                                    "price": price2,
-                                    "cancellation_policy": "Free Cancellation",
-                                    "free_cancellation_date": free_cancellation_date
-                                }
-                            ],
-                            "availability": "Available"
-                        }
-                        
-                        availability_data.append(room_data)
-                        print(f"Scraped data for room: {room_type}")
-                        print(f"  Non-refundable Price: ${price1:.2f}")
-                        print(f"  Free Cancellation Price: ${price2:.2f}")
-                    else:
-                        print(f"Could not extract prices for room: {room_type}")
-                except Exception as e:
-                    print(f"Error processing room {i + 1}:")
-                    print(traceback.format_exc())
-            
-            print(f"Scraped availability data: {availability_data}")
-            return availability_data
+        browser = p.chromium.launch(headless=True)
         
-        except PlaywrightTimeoutError as e:
-            print(f"Timeout error: {e}")
-            print("Page content at time of error:")
-            print(page.content())
-            return None
-        except Exception as e:
-            print(f"Unexpected error: {type(e).__name__}: {e}")
-            print("Traceback:")
-            print(traceback.format_exc())
-            print("Page content at time of error:")
-            print(page.content())
-            return None
-        finally:
-            if 'browser' in locals():
-                browser.close()
+        for currency in currencies:
+            url = f"{base_url}&currency={currency}"
+            print(f"Attempting to scrape availability data for {currency} from {url}")
+            
+            try:
+                page = browser.new_page()
+                page.set_default_timeout(60000)  # Increase timeout to 60 seconds
                 
+                print(f"Navigating to {url}")
+                response = page.goto(url)
+                print(f"Navigation complete. Status: {response.status}")
+                
+                print("Waiting for page to load completely")
+                page.wait_for_load_state('networkidle')
+                
+                print("Checking for room name and price elements")
+                room_names = page.query_selector_all('td.name')
+                room_prices = page.query_selector_all('td.price')
+                
+                print(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
+                
+                if not room_names or not room_prices or len(room_prices) != len(room_names) * 2:
+                    print("Unexpected number of room names or prices. Dumping page content:")
+                    print(page.content())
+                    continue
+                
+                availability_data = []
+                for i in range(0, len(room_names)):
+                    try:
+                        room_type = room_names[i].inner_text().strip()
+                        price1_text = room_prices[i*2].inner_text().strip()
+                        price2_text = room_prices[i*2 + 1].inner_text().strip()
+                        
+                        price1_match = re.search(r'([\$€])([\d,]+(?:\.\d{2})?)', price1_text)
+                        price2_match = re.search(r'([\$€])([\d,]+(?:\.\d{2})?)', price2_text)
+                        
+                        if price1_match and price2_match:
+                            price1 = float(price1_match.group(2).replace(',', ''))
+                            price2 = float(price2_match.group(2).replace(',', ''))
+                            
+                            free_cancellation_date = calculate_free_cancellation_date(check_in)
+                            
+                            room_data = {
+                                "room_type": room_type,
+                                "prices": [
+                                    {
+                                        f"price_{currency.lower()}": price1,
+                                        "cancellation_policy": "Non-refundable",
+                                        "free_cancellation_date": None
+                                    },
+                                    {
+                                        f"price_{currency.lower()}": price2,
+                                        "cancellation_policy": "Free Cancellation",
+                                        "free_cancellation_date": free_cancellation_date
+                                    }
+                                ],
+                                "availability": "Available"
+                            }
+                            
+                            availability_data.append(room_data)
+                            print(f"Scraped data for room: {room_type}")
+                            print(f"  Non-refundable Price: {price1_match.group(1)}{price1:.2f}")
+                            print(f"  Free Cancellation Price: {price2_match.group(1)}{price2:.2f}")
+                        else:
+                            print(f"Could not extract prices for room: {room_type}")
+                    except Exception as e:
+                        print(f"Error processing room {i + 1}:")
+                        print(traceback.format_exc())
+                
+                all_availability_data[currency] = availability_data
+                print(f"Scraped availability data for {currency}: {availability_data}")
+                
+            except PlaywrightTimeoutError as e:
+                print(f"Timeout error for {currency}: {e}")
+                print("Page content at time of error:")
+                print(page.content())
+            except Exception as e:
+                print(f"Unexpected error for {currency}: {type(e).__name__}: {e}")
+                print("Traceback:")
+                print(traceback.format_exc())
+                print("Page content at time of error:")
+                print(page.content())
+            finally:
+                page.close()
+        
+        browser.close()
+    
+    return all_availability_data
+
+def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: List[Dict[str, Any]], is_greek_email: bool) -> None:
+    if is_greek_email:
+        subject = f"Νέο Αίτημα Κράτησης - {customer_email}"
+        body = f"""
+        Λήφθηке νέο αίτημα κράτησης από {customer_email}.
+
+        Λεπτομέρειες κράτησης:
+        Ημερομηνία άφιξης: {reservation_info['check_in']}
+        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
+        Αριθμός ενηλίκων: {reservation_info['adults']}
+        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
+
+        Διαθέσιμες επιλογές:
+        """
+    else:
+        subject = f"New Reservation Request - {customer_email}"
+        body = f"""
+        A new reservation request has been received from {customer_email}.
+
+        Reservation details:
+        Check-in date: {reservation_info['check_in']}
+        Check-out date: {reservation_info['check_out']}
+        Number of adults: {reservation_info['adults']}
+        Number of children: {reservation_info.get('children', 'Not specified')}
+
+        Available options:
+        """
+    
+    for room in availability_data:
+        body += f"\nRoom type: {room['room_type']}\n"
+        body += f"Availability: {room['availability']}\n"
+        for price_option in room['prices']:
+            body += f"  Price: ${price_option['price_usd']:.2f} / €{price_option['price_eur']:.2f}\n"
+            body += f"  Cancellation policy: {price_option['cancellation_policy']}\n"
+            if price_option['free_cancellation_date']:
+                body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
+    
+    body += "\nPlease process this request and respond to the customer as appropriate."
+
+    send_email(staff_email, subject, body)
+
+def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool) -> None:
+    if is_greek_email:
+        subject = f"Νέο Αίτημα Κράτησης (Μερικές Πληροφορίες) - {customer_email}"
+        body = f"""
+        Λήφθηκε νέο αίτημα κράτησης από {customer_email}, αλλά δεν ήταν δυνατή η παροχή πλήρων πληροφοριών διαθεσιμότητας.
+
+        Λεπτομέρειες κράτησης:
+        Ημερομηνία άφιξης: {reservation_info['check_in']}
+        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
+        Αριθμός ενηλίκων: {reservation_info.get('adults', 'Δεν διευκρινίστηκε')}
+        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
+
+        Παρακαλώ επεξεργαστείτε αυτό το αίτημα χειροκίνητα και επικοινωνήστε με τον πελάτη το συντομότερο δυνατό.
+        """
+    else:
+        subject = f"New Reservation Request (Partial Information) - {customer_email}"
+        body = f"""
+        A new reservation request has been received from {customer_email}, but full availability information could not be provided.
+
+        Reservation details:
+        Check-in date: {reservation_info['check_in']}
+        Check-out date: {reservation_info['check_out']}
+        Number of adults: {reservation_info.get('adults', 'Not specified')}
+        Number of children: {reservation_info.get('children', 'Not specified')}
+
+        Please process this request manually and contact the customer as soon as possible.
+        """
+    
+    send_email(staff_email, subject, body)
+
+def send_error_notification(email_body: str, reservation_info: Dict[str, Any]) -> None:
+    staff_email = os.environ['STAFF_EMAIL']
+    subject = "Error Processing Reservation Request"
+    body = f"""
+    An error occurred while processing a reservation request. The system was unable to parse the reservation dates.
+
+    Parsed reservation info:
+    {reservation_info}
+
+    Original email body:
+    {email_body}
+
+    Please review this request manually and respond to the customer as appropriate.
+    """
+    send_email(staff_email, subject, body)
+
 def send_email(to_address, subject, body):
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
@@ -362,168 +370,6 @@ def send_email(to_address, subject, body):
         print(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-def send_autoresponse(to_address: str, reservation_info: Dict[str, Any], availability_data: List[Dict[str, Any]], is_greek_email: bool) -> None:
-    if is_greek_email:
-        subject = "Απάντηση στο Αίτημα Κράτησης"
-        body = f"""
-        Αγαπητέ πελάτη,
-
-        Σας ευχαριστούμε για το ενδιαφέρον σας στο Kokoon Volos. Έχουμε λάβει το αίτημά σας για κράτηση με τις ακόλουθες λεπτομέρειες:
-
-        Ημερομηνία άφιξης: {reservation_info['check_in']}
-        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
-        Αριθμός ενηλίκων: {reservation_info['adults']}
-        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
-
-        Με βάση το αίτημά σας, έχουμε τις ακόλουθες διαθέσιμες επιλογές:
-        """
-        for room in availability_data:
-            body += f"\nΤύπος δωματίου: {room['room_type']}\n"
-            body += f"Διαθεσιμότητα: {room['availability']}\n"
-            for price_option in room['prices']:
-                body += f"  Τιμή: ${price_option['price_usd']:.2f} / €{price_option['price_eur']:.2f}\n"
-                body += f"  Πολιτική ακύρωσης: {price_option['cancellation_policy']}\n"
-                if price_option['free_cancellation_date']:
-                    body += f"  Δωρεάν ακύρωση έως: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
-        
-        body += """
-        Παρακαλούμε σημειώστε ότι αυτές οι πληροφορίες βασίζονται στην τρέχουσα διαθεσιμότητα και μπορεί να αλλάξουν.
-        Υπενθύμιση: Οι τιμές περιλαμβάνουν όλους τους φόρους και τα τέλη.
-        Εάν επιθυμείτε να προχωρήσετε με την κράτηση ή έχετε περαιτέρω ερωτήσεις, παρακαλούμε μη διστάσετε να επικοινωνήσετε μαζί μας.
-
-        Με εκτίμηση,
-        Η ομάδα του Kokoon Volos
-        """
-    else:
-        subject = "Response to Your Reservation Request"
-        body = f"""
-        Dear guest,
-
-        Thank you for your interest in Kokoon Volos. We have received your reservation request with the following details:
-
-        Check-in date: {reservation_info['check_in']}
-        Check-out date: {reservation_info['check_out']}
-        Number of adults: {reservation_info['adults']}
-        Number of children: {reservation_info.get('children', 'Not specified')}
-
-        Based on your request, we have the following available options:
-        """
-        for room in availability_data:
-            body += f"\nRoom type: {room['room_type']}\n"
-            body += f"Availability: {room['availability']}\n"
-            for price_option in room['prices']:
-                body += f"  Price: ${price_option['price_usd']:.2f} / €{price_option['price_eur']:.2f}\n"
-                body += f"  Cancellation policy: {price_option['cancellation_policy']}\n"
-                if price_option['free_cancellation_date']:
-                    body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
-        
-        body += """
-        Please note that this information is based on current availability and may change.
-        Reminder: Prices include all taxes & fees.
-        If you wish to proceed with the booking or have any further questions, please don't hesitate to contact us.
-
-        Best regards,
-        The Kokoon Volos Team
-        """
-
-    send_email(to_address, subject, body)
-    
-def send_error_notification(original_email, parse_result):
-    recipient_email = os.environ['ERROR_NOTIFICATION_EMAIL']
-    subject = "Parsing Error: Reservation Request"
-    body = f"""
-    A reservation request email could not be parsed correctly.
-
-    Original Email:
-    {original_email}
-
-    Parsed Result:
-    {parse_result}
-
-    Please review and process this request manually.
-    """
-    
-    send_email(recipient_email, subject, body)
-
-def process_email(email_body: str, sender_address: str) -> None:
-    logging.info("Starting to process email")
-    is_greek_email = is_greek(email_body)
-    logging.info(f"Email language: {'Greek' if is_greek_email else 'English'}")
-    
-    reservation_info = parse_reservation_request(email_body)
-    logging.info(f"Parsed reservation info: {reservation_info}")
-    
-    if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        logging.info("Reservation dates found, proceeding to web scraping")
-        
-        availability_data = scrape_thekokoon_availability(
-            reservation_info['check_in'],
-            reservation_info['check_out'],
-            reservation_info.get('adults', 2),
-            reservation_info.get('children', 0)
-        )
-        logging.info(f"Web scraping result: {availability_data}")
-        
-        if availability_data:
-            logging.info("Availability data found, adding euro prices")
-            availability_data = add_euro_prices(availability_data)
-            logging.info("Sending detailed response")
-            send_autoresponse(sender_address, reservation_info, availability_data, is_greek_email)
-        else:
-            logging.info("No availability data found, sending partial information response")
-            send_partial_info_response(sender_address, reservation_info, is_greek_email)
-    else:
-        logging.warning("Failed to parse reservation dates. Sending error notification.")
-        send_error_notification(email_body, reservation_info)
-        generic_subject = "Λήψη Αιτήματος Κράτησης" if is_greek_email else "Reservation Request Received"
-        generic_body = ("Σας ευχαριστούμε για το αίτημα κράτησης. Η ομάδα μας θα το εξετάσει και θα επικοινωνήσει σύντομα μαζί σας."
-                        if is_greek_email else
-                        "Thank you for your reservation request. Our team will review it and get back to you shortly.")
-        send_email(sender_address, generic_subject, generic_body)
-
-    logging.info("Email processing completed")
-
-def send_partial_info_response(to_address, reservation_info, is_greek_email):
-    if is_greek_email:
-        subject = "Λήψη Αιτήματος Κράτησης - Μερικές Πληροφορίες"
-        body = f"""
-        Αγαπητέ πελάτη,
-
-        Σας ευχαριστούμε για το ενδιαφέρον σας στο Kokoon Volos. Έχουμε λάβει το αίτημά σας για κράτηση με τις ακόλουθες λεπτομέρειες:
-
-        Ημερομηνία άφιξης: {reservation_info['check_in']}
-        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
-        Αριθμός ενηλίκων: {reservation_info.get('adults', 'Δεν διευκρινίστηκε')}
-        Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
-
-        Λόγω τεχνικών δυσκολιών, δεν μπορούμε να παρέχουμε αναλυτικές πληροφορίες διαθεσιμότητας αυτή τη στιγμή. Η ομάδα μας θα επεξεργαστεί το αίτημά σας και θα επικοινωνήσει σύντομα μαζί σας με περισσότερες πληροφορίες.
-
-        Εάν έχετε οποιεσδήποτε ερωτήσεις, μη διστάσετε να επικοινωνήσετε μαζί μας.
-
-        Με εκτίμηση,
-        Η ομάδα του Kokoon Volos
-        """
-    else:
-        subject = "Reservation Request Received - Partial Information"
-        body = f"""
-        Dear guest,
-
-        Thank you for your interest in Kokoon Volos. We have received your reservation request with the following details:
-
-        Check-in date: {reservation_info['check_in']}
-        Check-out date: {reservation_info['check_out']}
-        Number of adults: {reservation_info.get('adults', 'Not specified')}
-        Number of children: {reservation_info.get('children', 'Not specified')}
-
-        Due to technical difficulties, we are unable to provide detailed availability information at this time. Our team will process your request and get back to you shortly with more information.
-
-        If you have any questions, please don't hesitate to contact us.
-
-        Best regards,
-        The Kokoon Volos Team
-        """
-    
-    send_email(to_address, subject, body)
 
 def main():
     print("Starting email processor script")
