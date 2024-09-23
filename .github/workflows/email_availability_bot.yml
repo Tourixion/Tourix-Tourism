@@ -27,6 +27,7 @@ jobs:
     - name: Run email processor
       env:
         EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+        STAFF_EMAIL: ${{ secrets.STAFF_EMAIL }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         ERROR_NOTIFICATION_EMAIL: ${{ secrets.ERROR_NOTIFICATION_EMAIL }}
         IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
