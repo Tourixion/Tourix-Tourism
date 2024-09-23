@@ -271,7 +271,8 @@ def send_email(to_address: str, subject: str, body: str) -> None:
         logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: Dict[str, List[Dict[str, Any]]], is_greek_email: bool) -> None:
+
+def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: Dict[str, List[Dict[str, Any]]], is_greek_email: bool, original_email) -> None:
     if is_greek_email:
         subject = f"Νέο Αίτημα Κράτησης - {customer_email}"
         body = f"""
@@ -312,7 +313,38 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
     
     body += "\nPlease process this request and respond to the customer as appropriate."
 
-    send_email(staff_email, subject, body)
+    send_email_with_original(staff_email, subject, body, original_email)
+
+def send_email_with_original(to_address: str, subject: str, body: str, original_email) -> None:
+    smtp_server = "mail.kokoonvolos.gr"
+    smtp_port = 465  # SSL port
+    sender_email = os.environ['EMAIL_ADDRESS']
+    password = os.environ['EMAIL_PASSWORD']
+
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["To"] = to_address
+    message["Subject"] = subject
+    message.attach(MIMEText(body, "plain", "utf-8"))
+
+    # Attach the original email
+    message.attach(MIMEText("\n\n--- Original Message ---\n", "plain", "utf-8"))
+    if original_email.is_multipart():
+        for part in original_email.walk():
+            if part.get_content_type() == "text/plain":
+                message.attach(MIMEText(part.get_payload(decode=True).decode(), "plain", "utf-8"))
+                break
+    else:
+        message.attach(MIMEText(original_email.get_payload(decode=True).decode(), "plain", "utf-8"))
+
+    try:
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, password)
+            server.send_message(message)
+        logging.info(f"Email sent successfully to {to_address}")
+    except Exception as e:
+        logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
+        raise
 
 def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool) -> None:
     if is_greek_email:
@@ -360,8 +392,9 @@ def send_error_notification(email_body: str, reservation_info: Dict[str, Any]) -
     """
     send_email(staff_email, subject, body)
 
-def process_email(email_body: str, sender_address: str) -> None:
+def process_email(email_msg, sender_address: str) -> None:
     logging.info("Starting to process email")
+    email_body = get_email_content(email_msg)
     is_greek_email = is_greek(email_body)
     logging.info(f"Email language: {'Greek' if is_greek_email else 'English'}")
     
@@ -383,16 +416,16 @@ def process_email(email_body: str, sender_address: str) -> None:
         
         if availability_data:
             logging.info("Availability data found, sending detailed response to staff")
-            send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek_email)
+            send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek_email, email_msg)
         else:
             logging.info("No availability data found, sending partial information response to staff")
-            send_partial_info_response(staff_email, sender_address, reservation_info, is_greek_email)
+            send_partial_info_response(staff_email, sender_address, reservation_info, is_greek_email, email_msg)
     else:
         logging.warning("Failed to parse reservation dates. Sending error notification to staff.")
-        send_error_notification(email_body, reservation_info)
+        send_error_notification(email_body, reservation_info, email_msg)
     
     logging.info("Email processing completed")
-
+    
 def main():
     logging.info("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
@@ -423,7 +456,7 @@ def main():
                 email_body = get_email_content(email_msg)
                 logging.info("Email body retrieved")
                 
-                process_email(email_body, sender_address)
+                process_email(email_msg, sender_address)
                 logging.info(f"Finished processing message number: {num}")
 
         imap.logout()
