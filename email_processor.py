@@ -271,67 +271,44 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
                 
                 logging.info(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
                 
-                if not room_names or not room_prices or len(room_prices) != len(room_names) * 2:
-                    logging.warning("Unexpected number of room names or prices. Dumping page content:")
-                    logging.warning(page.content())
-                    continue
-                
                 availability_data = []
-                for i in range(0, len(room_names)):
+                for i in range(len(room_names)):
                     try:
                         room_type = room_names[i].inner_text().strip()
-                        price1_text = room_prices[i*2].inner_text().strip()
-                        price2_text = room_prices[i*2 + 1].inner_text().strip()
+                        price_texts = [price.inner_text().strip() for price in room_prices[i*2:i*2+2] if i*2+2 <= len(room_prices)]
                         
-                        price1_match = re.search(r'([\$€])([\d,]+(?:\.\d{2})?)', price1_text)
-                        price2_match = re.search(r'([\$€])([\d,]+(?:\.\d{2})?)', price2_text)
+                        prices = []
+                        for price_text in price_texts:
+                            price_match = re.search(r'([\$€])([\d,]+(?:\.\d{2})?)', price_text)
+                            if price_match:
+                                price = float(price_match.group(2).replace(',', ''))
+                                prices.append({
+                                    f"price_{currency.lower()}": price,
+                                    "cancellation_policy": "Non-refundable" if len(prices) == 0 else "Free Cancellation",
+                                    "free_cancellation_date": calculate_free_cancellation_date(check_in) if len(prices) > 0 else None
+                                })
                         
-                        if price1_match and price2_match:
-                            price1 = float(price1_match.group(2).replace(',', ''))
-                            price2 = float(price2_match.group(2).replace(',', ''))
-                            
-                            free_cancellation_date = calculate_free_cancellation_date(check_in)
-                            
-                            room_data = {
-                                "room_type": room_type,
-                                "prices": [
-                                    {
-                                        f"price_{currency.lower()}": price1,
-                                        "cancellation_policy": "Non-refundable",
-                                        "free_cancellation_date": None
-                                    },
-                                    {
-                                        f"price_{currency.lower()}": price2,
-                                        "cancellation_policy": "Free Cancellation",
-                                        "free_cancellation_date": free_cancellation_date
-                                    }
-                                ],
-                                "availability": "Available"
-                            }
-                            
-                            availability_data.append(room_data)
-                            logging.info(f"Scraped data for room: {room_type}")
-                            logging.info(f"  Non-refundable Price: {price1_match.group(1)}{price1:.2f}")
-                            logging.info(f"  Free Cancellation Price: {price2_match.group(1)}{price2:.2f}")
-                        else:
-                            logging.warning(f"Could not extract prices for room: {room_type}")
+                        room_data = {
+                            "room_type": room_type,
+                            "prices": prices,
+                            "availability": "Available" if prices else "Not Available"
+                        }
+                        
+                        availability_data.append(room_data)
+                        logging.info(f"Scraped data for room: {room_type}")
+                        for price in prices:
+                            logging.info(f"  {price['cancellation_policy']} Price: {price[f'price_{currency.lower()}']:.2f}")
                     except Exception as e:
                         logging.error(f"Error processing room {i + 1}:")
-                        logging.error(traceback.format_exc())
+                        logging.error(str(e))
                 
                 all_availability_data[currency] = availability_data
                 logging.info(f"Scraped availability data for {currency}: {availability_data}")
                 
             except PlaywrightTimeoutError as e:
                 logging.error(f"Timeout error for {currency}: {e}")
-                logging.error("Page content at time of error:")
-                logging.error(page.content())
             except Exception as e:
                 logging.error(f"Unexpected error for {currency}: {type(e).__name__}: {e}")
-                logging.error("Traceback:")
-                logging.error(traceback.format_exc())
-                logging.error("Page content at time of error:")
-                logging.error(page.content())
             finally:
                 page.close()
         
@@ -492,25 +469,38 @@ def process_email(email_msg, sender_address: str) -> None:
     
     staff_email = get_staff_email()
     
-    if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        logging.info("Reservation dates found, proceeding to web scraping")
+    # Check if we have at least one date (either check-in or check-out)
+    has_date = 'check_in' in reservation_info or 'check_out' in reservation_info
+    
+    if has_date:
+        logging.info("At least one reservation date found, proceeding with available information")
         
-        availability_data = scrape_thekokoon_availability(
-            reservation_info['check_in'],
-            reservation_info['check_out'],
-            reservation_info.get('adults', 2),
-            reservation_info.get('children', 0)
-        )
-        logging.info(f"Web scraping result: {availability_data}")
+        # If we're missing check-in or check-out, set a default range
+        if 'check_in' not in reservation_info and 'check_out' in reservation_info:
+            reservation_info['check_in'] = reservation_info['check_out'] - timedelta(days=1)
+        elif 'check_out' not in reservation_info and 'check_in' in reservation_info:
+            reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
         
-        if availability_data:
-            logging.info("Availability data found, sending detailed response to staff")
-            send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek_email, email_msg)
-        else:
-            logging.info("No availability data found, sending partial information response to staff")
+        try:
+            availability_data = scrape_thekokoon_availability(
+                reservation_info.get('check_in', datetime.now().date()),
+                reservation_info.get('check_out', datetime.now().date() + timedelta(days=1)),
+                reservation_info.get('adults', 2),
+                reservation_info.get('children', 0)
+            )
+            logging.info(f"Web scraping result: {availability_data}")
+            
+            if availability_data:
+                logging.info("Availability data found, sending detailed response to staff")
+                send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek_email, email_msg)
+            else:
+                logging.info("No availability data found, sending partial information response to staff")
+                send_partial_info_response(staff_email, sender_address, reservation_info, is_greek_email, email_msg)
+        except Exception as e:
+            logging.error(f"Error during web scraping: {str(e)}")
             send_partial_info_response(staff_email, sender_address, reservation_info, is_greek_email, email_msg)
     else:
-        logging.warning("Failed to parse reservation dates. Sending error notification to staff.")
+        logging.warning("No reservation dates found. Sending error notification to staff.")
         send_error_notification(email_body, reservation_info, email_msg)
     
     logging.info("Email processing completed")
