@@ -89,12 +89,13 @@ def get_email_content(msg):
 def get_patterns():
     return {
         'check_in': [
-            r'(?:check[ -]?in|arrival|from|αφιξη|απο|για)[\s:]+(\d{1,2}(?:\s+)?(?:[α-ωa-z]+)(?:\s+)?(?:\d{2,4})?)',
+            r'(?:check[ -]?in|arrival|from|αφιξη|απο|για)[\s:]+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:εως|μεχρι|to|till)',
             r'(?:απο|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
             r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
         ],
         'check_out': [
-            r'(?:check[ -]?out|departure|to|until|till|αναχωρηση|μεχρι)[\s:]+(.+?)(?:\n|$)',
+            r'(?:check[ -]?out|departure|to|until|till|αναχωρηση|μεχρι|εως)[\s:]+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
             r'(?:εως|μεχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
             r'check\s*out\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
         ],
@@ -128,6 +129,7 @@ def extract_info(email_body, patterns):
 
 def parse_custom_date(date_string):
     date_string = strip_accents(date_string.lower().strip())
+    current_year = datetime.now().year
     
     date_formats = [
         r'(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?',  # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
@@ -157,7 +159,7 @@ def parse_custom_date(date_string):
             
             day = int(day)
             month = int(month)
-            year = int(year) if year else datetime.now().year
+            year = int(year) if year else current_year
 
             if year and len(str(year)) == 2:
                 year += 2000 if year < 50 else 1900
@@ -167,8 +169,13 @@ def parse_custom_date(date_string):
             except ValueError as e:
                 raise ValueError(f"Invalid date: {date_string}. Error: {str(e)}")
 
+    # If no format matches, try dateutil parser as a fallback
     try:
-        return date_parser.parse(date_string, fuzzy=True).date()
+        parsed_date = date_parser.parse(date_string, fuzzy=True).date()
+        # If the parsed year is in the past, assume it's for next year
+        if parsed_date.year < current_year:
+            parsed_date = parsed_date.replace(year=current_year + 1)
+        return parsed_date
     except ValueError:
         raise ValueError(f"Unable to parse date: {date_string}")
 
@@ -212,9 +219,20 @@ def parse_reservation_request(email_body):
     patterns = get_patterns()
     
     reservation_info = extract_info(email_body, patterns)
-    reservation_info = parse_numeric_fields(reservation_info)  # Parse numeric fields first
+    reservation_info = parse_numeric_fields(reservation_info)
     reservation_info = parse_dates(reservation_info)
     reservation_info = calculate_checkout(reservation_info)
+    
+    # Ensure 'nights' is correctly reflected in the reservation_info
+    if 'check_in' in reservation_info and 'check_out' in reservation_info:
+        nights = (reservation_info['check_out'] - reservation_info['check_in']).days
+        reservation_info['nights'] = nights
+    
+    # Remove 'room_type' if it contains date information (likely a parsing error)
+    if 'room_type' in reservation_info and re.search(r'\d{1,2}[/.-]\d{1,2}', reservation_info['room_type']):
+        del reservation_info['room_type']
+    
+    logging.info(f"Parsed reservation info: {reservation_info}")
     
     return reservation_info
     
