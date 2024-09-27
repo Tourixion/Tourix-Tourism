@@ -27,87 +27,178 @@ from transliterate import detect_language as transliterate_detect_language, tran
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-def strip_accents(text):
-    return ''.join(char for char in unicodedata.normalize('NFKD', text) if unicodedata.category(char) != 'Mn')
-
+###############################################################################################
 def normalize_text(text: str) -> str:
-    """Normalize text by removing accents and converting to lowercase."""
-    return ''.join(c for c in unicodedata.normalize('NFD', text.lower())
-                   if unicodedata.category(c) != 'Mn')
-    
+    return text.lower()
+
 def detect_language(text: str) -> str:
-    """Detect if the text is Greek or English."""
     lang = transliterate_detect_language(text)
     return 'el' if lang == 'el' else 'en'
+###############################################################################################d
 
-def transliterate_if_greek(text: str) -> str:
-    """Transliterate text if it's in Greek."""
-    lang = detect_language(text)
-    return translit(text, 'el', reversed=True) if lang == 'el' else text
+def parse_english_date(date_str: str) -> datetime.date:
+    months = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    }
+    patterns = [
+        r'(\d{1,2})\s*([a-z]{3,9})\s*(\d{2,4})?',  # 9 nov 24 or 9 november 2024
+        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',    # 9/11 or 9/11/24
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, date_str)
+        if match:
+            day, month, year = match.groups()
+            if month.isalpha():
+                month = months[month[:3]]
+            else:
+                month = int(month)
+            day = int(day)
+            year = int(year) if year else datetime.now().year
+            if year < 100:
+                year += 2000
+            return datetime(year, month, day).date()
+    raise ValueError(f"Unable to parse date: {date_str}")
 
-def extract_dates(text: str) -> Dict[str, Any]:
-    """Extract dates from the text."""
-    dates = re.findall(r'(\d{1,2})\s*(?:of|)\s*([a-zA-Z]+)', text)
-    result = {}
-    if len(dates) >= 1:
-        result['check_in'] = f"{dates[0][0]} {dates[0][1]}"
-    if len(dates) >= 2:
-        result['check_out'] = f"{dates[1][0]} {dates[1][1]}"
-    return result
+def parse_english_request(email_body: str) -> Dict[str, Any]:
+    reservation_info = {}
+    
+    # Extract check-in and check-out dates
+    check_in_match = re.search(r'check\s*in\s*:?\s*(.+)', email_body, re.IGNORECASE)
+    check_out_match = re.search(r'check\s*out\s*:?\s*(.+)', email_body, re.IGNORECASE)
+    
+    if check_in_match:
+        try:
+            reservation_info['check_in'] = parse_english_date(check_in_match.group(1))
+        except ValueError as e:
+            logging.error(f"Failed to parse check-in date: {str(e)}")
+    
+    if check_out_match:
+        try:
+            reservation_info['check_out'] = parse_english_date(check_out_match.group(1))
+        except ValueError as e:
+            logging.error(f"Failed to parse check-out date: {str(e)}")
+    
+    # Extract number of nights
+    nights_match = re.search(r'(\d+)\s*nights?', email_body, re.IGNORECASE)
+    if nights_match:
+        reservation_info['nights'] = int(nights_match.group(1))
+    
+    # Extract number of adults and children
+    adults_match = re.search(r'(\d+)\s*(?:adults?|persons?|people|guests?)', email_body, re.IGNORECASE)
+    children_match = re.search(r'(\d+)\s*(?:children|kids)', email_body, re.IGNORECASE)
+    
+    if adults_match:
+        reservation_info['adults'] = int(adults_match.group(1))
+    else:
+        reservation_info['adults'] = 2  # Default to 2 adults if not specified
+    
+    if children_match:
+        reservation_info['children'] = int(children_match.group(1))
+    
+    # Extract room type
+    room_match = re.search(r'(?:room|accommodation):\s*(.+?)(?:\n|$)', email_body, re.IGNORECASE)
+    if room_match:
+        reservation_info['room_type'] = room_match.group(1).strip()
+    
+    return reservation_info
+#################################################################d
 
-def extract_numbers(text: str) -> Dict[str, int]:
-    """Extract numeric information from the text."""
-    numbers = re.findall(r'(\d+)\s*(?:adults?|persons?|people|guests?|children|kids|nights?|rooms?)', text)
-    result = {}
-    if numbers:
-        result['adults'] = int(numbers[0])
-    if len(numbers) > 1:
-        result['children'] = int(numbers[1])
-    if len(numbers) > 2:
-        result['nights'] = int(numbers[2])
-    return result
+def parse_greek_date(date_str: str) -> datetime.date:
+    greek_months = {
+        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
+        'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5, 'ιουνιου': 6,
+        'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9, 'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
+    }
+    patterns = [
+        r'(\d{1,2})\s*([α-ωίϊΐόάέύϋΰήώ]{3,})\s*(\d{2,4})?',  # 9 νοεμβριου 24 or 9 νοεμβριου 2024
+        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',               # 9/11 or 9/11/24
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, date_str)
+        if match:
+            day, month, year = match.groups()
+            if month.isalpha():
+                month = greek_months.get(month.lower())
+                if not month:
+                    raise ValueError(f"Unknown month: {month}")
+            else:
+                month = int(month)
+            day = int(day)
+            year = int(year) if year else datetime.now().year
+            if year < 100:
+                year += 2000
+            return datetime(year, month, day).date()
+    raise ValueError(f"Unable to parse date: {date_str}")
+
+def parse_greek_request(email_body: str) -> Dict[str, Any]:
+    reservation_info = {}
+    
+    # Extract check-in and check-out dates
+    check_in_match = re.search(r'(?:άφιξη|από)\s*:?\s*(.+)', email_body, re.IGNORECASE)
+    check_out_match = re.search(r'(?:αναχώρηση|έως|μέχρι)\s*:?\s*(.+)', email_body, re.IGNORECASE)
+    
+    if check_in_match:
+        try:
+            reservation_info['check_in'] = parse_greek_date(check_in_match.group(1))
+        except ValueError as e:
+            logging.error(f"Failed to parse check-in date: {str(e)}")
+    
+    if check_out_match:
+        try:
+            reservation_info['check_out'] = parse_greek_date(check_out_match.group(1))
+        except ValueError as e:
+            logging.error(f"Failed to parse check-out date: {str(e)}")
+    
+    # Extract number of nights
+    nights_match = re.search(r'(\d+)\s*(?:νύχτες|βράδια)', email_body, re.IGNORECASE)
+    if nights_match:
+        reservation_info['nights'] = int(nights_match.group(1))
+    
+    # Extract number of adults and children
+    adults_match = re.search(r'(\d+)\s*(?:ενήλικες|άτομα)', email_body, re.IGNORECASE)
+    children_match = re.search(r'(\d+)\s*(?:παιδιά)', email_body, re.IGNORECASE)
+    
+    if adults_match:
+        reservation_info['adults'] = int(adults_match.group(1))
+    else:
+        reservation_info['adults'] = 2  # Default to 2 adults if not specified
+    
+    if children_match:
+        reservation_info['children'] = int(children_match.group(1))
+    
+    # Extract room type
+    room_match = re.search(r'(?:δωμάτιο|κατάλυμα):\s*(.+?)(?:\n|$)', email_body, re.IGNORECASE)
+    if room_match:
+        reservation_info['room_type'] = room_match.group(1).strip()
+    
+    return reservation_info
+
+#################################################################dds
 
 def parse_reservation_request(email_body: str) -> Dict[str, Any]:
-    logging.info(f"Parsing reservation request")
+    logging.info("Parsing reservation request")
     
-    # Normalize and transliterate if necessary
     normalized_text = normalize_text(email_body)
-    transliterated_text = transliterate_if_greek(normalized_text)
+    language = detect_language(normalized_text)
     
-    logging.info(f"Normalized and transliterated text: {transliterated_text}")
-
-    # Extract information
-    reservation_info = {}
-    reservation_info.update(extract_dates(transliterated_text))
-    reservation_info.update(extract_numbers(transliterated_text))
-
-    # Set default values if not found
-    if 'adults' not in reservation_info:
-        reservation_info['adults'] = 2
-        logging.info("Set default number of adults to 2")
-
-    # Parse dates
-    for date_key in ['check_in', 'check_out']:
-        if date_key in reservation_info:
-            try:
-                reservation_info[date_key] = datetime.strptime(reservation_info[date_key], "%d %B").date()
-                logging.info(f"Parsed {date_key}: {reservation_info[date_key]}")
-            except ValueError as e:
-                logging.error(f"Failed to parse {date_key}: {str(e)}")
-                del reservation_info[date_key]
-
+    logging.info(f"Detected language: {language}")
+    
+    if language == 'el':
+        reservation_info = parse_greek_request(normalized_text)
+    else:
+        reservation_info = parse_english_request(normalized_text)
+    
     # Calculate check-out date if not provided
     if 'check_in' in reservation_info and 'check_out' not in reservation_info and 'nights' in reservation_info:
         reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=reservation_info['nights'])
         logging.info(f"Calculated check-out date: {reservation_info['check_out']}")
-
+    
     logging.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
-    
-def get_staff_email():
-    return os.environ['STAFF_EMAIL']
 
+#################################################################d
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
         check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
