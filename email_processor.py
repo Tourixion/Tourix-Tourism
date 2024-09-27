@@ -123,8 +123,10 @@ def parse_reservation_request(email_body):
     for pattern in date_range_patterns:
         match = re.search(pattern, email_body)
         if match:
-            reservation_info['check_in'] = match.group(-2)
-            reservation_info['check_out'] = match.group(-1)
+            groups = match.groups()
+            if len(groups) >= 2:
+                reservation_info['check_in'] = groups[-2]
+                reservation_info['check_out'] = groups[-1]
             break
 
     # Parse dates
