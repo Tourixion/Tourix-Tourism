@@ -65,46 +65,62 @@ def clean_email_body(email_body: str) -> str:
 ###############################################################################################d
 
 def parse_english_date(date_str: str) -> datetime.date:
+    """
+    Parse various English date formats into a datetime.date object.
+    Supports formats like "9 Nov 24", "9 November 2024", "9/11/24", "9/11".
+    """
+    # Define month abbreviations and full names
     months = {
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5,
+        'june': 6, 'july': 7, 'august': 8, 'september': 9, 'october': 10,
+        'november': 11, 'december': 12
     }
-    patterns = [
-        r'(\d{1,2})\s*([a-z]{3,9})\s*(\d{2,4})?',  # 9 nov 24 or 9 november 2024
-        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',    # 9/11 or 9/11/24
-    ]
-    date_str = date_str.lower()
-    # Try DD/MM format first
-    if '/' in date_str:
-        try:
-            day, month = map(int, date_str.split('/'))
-            year = datetime.now().year
-            return datetime(year, month, day).date()
-        except ValueError:
-            logging.debug(f"Failed to parse {date_str} as DD/MM format")
     
-    # If not DD/MM, try DD month format
-    parts = date_str.split()
-    if len(parts) >= 2:
-        try:
-            day = int(parts[0])
-            month_str = parts[1][:3]  # Take only the first three letters
-            year = datetime.now().year
-            
-            if month_str in greek_months:
-                month = greek_months[month_str]
-            else:
-                raise ValueError(f"Unknown month: {month_str}")
-            
-            if len(parts) == 3 and parts[2].isdigit():
-                year = int(parts[2])
-            
-            return datetime(year, month, day).date()
-        except ValueError:
-            logging.debug(f"Failed to parse {date_str} as DD month format")
-    
-    raise ValueError(f"Unable to parse date: {date_str}")
+    # Normalize the input
+    date_str = date_str.lower().strip()
 
+    # Pattern to handle formats like "9 Nov 24", "9 November 2024"
+    pattern_full_month = r'(\d{1,2})\s*([a-z]+)\s*(\d{2,4})?'
+    # Pattern to handle formats like "9/11", "9/11/24"
+    pattern_dd_mm = r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?'
+    
+    # Check for DD/MM/YYYY format
+    if '/' in date_str:
+        match = re.match(pattern_dd_mm, date_str)
+        if match:
+            day, month, year = map(int, match.groups())
+            if year < 100:  # Handle two-digit years
+                year += 2000
+            year = year if year >= 1900 else year + 1900  # Adjust year for centuries
+            try:
+                return datetime(year, month, day).date()
+            except ValueError:
+                logging.debug(f"Failed to parse {date_str} as DD/MM/YYYY format")
+    
+    # Check for DD Month YYYY format
+    match = re.match(pattern_full_month, date_str)
+    if match:
+        day, month_str, year = match.groups()
+        day = int(day)
+        month = months.get(month_str[:3], None)  # Use only first three letters of month
+        if month is None:
+            raise ValueError(f"Unknown month: {month_str}")
+        if year:
+            year = int(year)
+            if year < 100:  # Handle two-digit years
+                year += 2000
+            year = year if year >= 1900 else year + 1900  # Adjust year for centuries
+        else:
+            year = datetime.now().year  # Use current year if year is not provided
+        try:
+            return datetime(year, month, day).date()
+        except ValueError:
+            logging.debug(f"Failed to parse {date_str} as DD Month YYYY format")
+
+    raise ValueError(f"Unable to parse date: {date_str}")
+    
 def parse_format_eng_1(email_body: str) -> Optional[Dict[str, Any]]:
     """Parse format: 'I want 2 rooms for 26 October for 3 nights'"""
     pattern = r'(\d+)\s*(?:rooms).*?(\d+)\s*([A-Za-z]+).*?(\d+)\s*(?:nights|days)'
@@ -227,42 +243,57 @@ def parse_english_request(email_body: str) -> Dict[str, Any]:
 
 #################################################################d
 def parse_greek_date(date_str: str) -> datetime.date:
+    """
+    Parse various Greek date formats into a datetime.date object.
+    Handles formats like "9 Νοε 24", "9 Νοεμβρίου 2024", "9/11", "9/11/24".
+    """
     logging.debug(f"Attempting to parse date: {date_str}")
+
     greek_months = {
         'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
-        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
+        'ιανουαρίου': 1, 'φεβρουαρίου': 2, 'μαρτίου': 3, 'απριλίου': 4, 'μαΐου': 5,
+        'ιουνίου': 6, 'ιουλίου': 7, 'αυγούστου': 8, 'σεπτεμβρίου': 9,
+        'οκτωβρίου': 10, 'νοεμβρίου': 11, 'δεκεμβρίου': 12
     }
     
-    date_str = date_str.lower()
-    
-    # Try DD/MM format first
+    date_str = date_str.lower().strip()
+
+    # Handle DD/MM/YYYY or DD/MM format
     if '/' in date_str:
         try:
-            day, month = map(int, date_str.split('/'))
-            year = datetime.now().year
+            parts = date_str.split('/')
+            day = int(parts[0])
+            month = int(parts[1])
+            year = datetime.now().year if len(parts) < 3 else int(parts[2])
+            if year < 100:  # Handle two-digit years
+                year += 2000
+            year = year if year >= 1900 else year + 1900  # Adjust for century
             return datetime(year, month, day).date()
         except ValueError:
-            logging.debug(f"Failed to parse {date_str} as DD/MM format")
+            logging.debug(f"Failed to parse {date_str} as DD/MM/YYYY format")
     
-    # If not DD/MM, try DD month format
+    # Handle DD Month YYYY format
     parts = date_str.split()
     if len(parts) >= 2:
         try:
             day = int(parts[0])
-            month_str = parts[1][:3]  # Take only the first three letters
-            year = datetime.now().year
+            month_str = parts[1]
+            month = greek_months.get(month_str[:3], None)  # Use first three letters or full name
             
-            if month_str in greek_months:
-                month = greek_months[month_str]
-            else:
+            if month is None:
                 raise ValueError(f"Unknown month: {month_str}")
             
+            year = datetime.now().year  # Default to current year
             if len(parts) == 3 and parts[2].isdigit():
                 year = int(parts[2])
-            
+                if year < 100:  # Handle two-digit years
+                    year += 2000
+                year = year if year >= 1900 else year + 1900  # Adjust for century
+
             return datetime(year, month, day).date()
         except ValueError:
-            logging.debug(f"Failed to parse {date_str} as DD month format")
+            logging.debug(f"Failed to parse {date_str} as DD Month YYYY format")
     
     raise ValueError(f"Unable to parse date: {date_str}")
 
