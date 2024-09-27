@@ -82,15 +82,12 @@ matcher.add("ADULTS", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["adults", "adult",
 # Number of children pattern
 matcher.add("CHILDREN", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["children", "child", "kids", "kid"]}}]])
 
-def parse_reservation_request(text):
-    logging.info(f"Parsing reservation request: {text}")
+def parse_reservation_request(email_body):
+    logging.info(f"Parsing reservation request")
     
-    # Detect language and process accordingly
-    if re.search(r'[α-ωΑ-Ω]', text):
-        logging.info("Detected Greek text, transliterating")
-        doc = nlp(transliterate_greek(text))
-    else:
-        doc = nlp(text)
+    # Transliterate and process
+    email_body = transliterate_greek(email_body.lower())
+    doc = nlp(email_body)
 
     matches = matcher(doc)
 
@@ -111,11 +108,23 @@ def parse_reservation_request(text):
             reservation_info["nights"] = span[0].text
             logging.info(f"Extracted number of nights: {span[0].text}")
         elif label == "ADULTS":
-            reservation_info["adults"] = span[0].text
-            logging.info(f"Extracted number of adults: {span[0].text}")
+            reservation_info["adults"] = span[0].text if span[0].like_num else span[1].text
+            logging.info(f"Extracted number of adults: {reservation_info['adults']}")
         elif label == "CHILDREN":
-            reservation_info["children"] = span[0].text
-            logging.info(f"Extracted number of children: {span[0].text}")
+            reservation_info["children"] = span[0].text if span[0].like_num else span[1].text
+            logging.info(f"Extracted number of children: {reservation_info['children']}")
+        elif label == "ROOMS":
+            reservation_info["rooms"] = span[0].text
+            logging.info(f"Extracted number of rooms: {reservation_info['rooms']}")
+
+    # Handle specific Greek phrases
+    if "apo" in email_body and "eos" in email_body:
+        dates = re.findall(r"apo (\d{1,2} \w+) eos (\d{1,2} \w+)", email_body)
+        if dates:
+            reservation_info["check_in"] = dates[0][0]
+            reservation_info["check_out"] = dates[0][1]
+            logging.info(f"Extracted check-in date: {dates[0][0]}")
+            logging.info(f"Extracted check-out date: {dates[0][1]}")
 
     # Convert dates to datetime objects
     for date_key in ["check_in", "check_out"]:
