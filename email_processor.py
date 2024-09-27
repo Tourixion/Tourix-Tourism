@@ -23,7 +23,7 @@ import spacy
 from spacy.matcher import Matcher
 from datetime import datetime, timedelta
 import re
-from transliterate import translit, detect_language
+from transliterate import detect_language as transliterate_detect_language, translit
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -35,10 +35,10 @@ def normalize_text(text: str) -> str:
     """Normalize text by removing accents and converting to lowercase."""
     return ''.join(c for c in unicodedata.normalize('NFD', text.lower())
                    if unicodedata.category(c) != 'Mn')
-
+    
 def detect_language(text: str) -> str:
     """Detect if the text is Greek or English."""
-    lang = detect_language(text)
+    lang = transliterate_detect_language(text)
     return 'el' if lang == 'el' else 'en'
 
 def transliterate_if_greek(text: str) -> str:
