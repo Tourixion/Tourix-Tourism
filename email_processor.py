@@ -110,29 +110,27 @@ def parse_greek_date(date_str: str) -> datetime.date:
     logging.debug(f"Attempting to parse date: {date_str}")
     greek_months = {
         'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
-        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
-        'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5, 'ιουνιου': 6,
-        'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9, 'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
     }
     
     date_str = date_str.lower()
-    for month, num in greek_months.items():
-        if month in date_str:
-            date_str = date_str.replace(month, str(num))
-            break
-    
-    try:
-        parsed_date = datetime.strptime(date_str, "%d %m %Y").date()
-        logging.debug(f"Successfully parsed date: {parsed_date}")
-        return parsed_date
-    except ValueError:
-        try:
-            parsed_date = datetime.strptime(date_str, "%d %m").date().replace(year=datetime.now().year)
-            logging.debug(f"Successfully parsed date without year: {parsed_date}")
-            return parsed_date
-        except ValueError:
-            logging.error(f"Failed to parse date: {date_str}")
-            raise ValueError(f"Unable to parse date: {date_str}")
+    parts = date_str.split()
+    if len(parts) >= 2:
+        day = int(parts[0])
+        month_str = parts[1][:3]  # Take only the first three letters
+        year = datetime.now().year
+        
+        if month_str in greek_months:
+            month = greek_months[month_str]
+        else:
+            raise ValueError(f"Unknown month: {month_str}")
+        
+        if len(parts) == 3 and parts[2].isdigit():
+            year = int(parts[2])
+        
+        return datetime(year, month, day).date()
+    else:
+        raise ValueError(f"Unable to parse date: {date_str}")
 
 def parse_format_1(email_body: str) -> Optional[Dict[str, Any]]:
     """Parse format: 'θελω 2 δωματια για 26 οκτωβριου για 3 νυχτες'"""
