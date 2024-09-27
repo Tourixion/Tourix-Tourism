@@ -89,28 +89,29 @@ def get_email_content(msg):
 def get_patterns():
     return {
         'check_in': [
-            r'(?:check[ -]?in|arrival|from|άφιξη|από|για)[\s:]+(\d{1,2}(?:\s+)?(?:[α-ωa-z]+)(?:\s+)?(?:\d{2,4})?)',
-            r'(?:από|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'(?:check[ -]?in|arrival|from|αφιξη|απο|για)[\s:]+(\d{1,2}(?:\s+)?(?:[α-ωa-z]+)(?:\s+)?(?:\d{2,4})?)',
+            r'(?:απο|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
             r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
         ],
         'check_out': [
-            r'(?:check[ -]?out|departure|to|until|till|αναχώρηση|μέχρι)[\s:]+(.+?)(?:\n|$)',
-            r'(?:έως|μέχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'(?:check[ -]?out|departure|to|until|till|αναχωρηση|μεχρι)[\s:]+(.+?)(?:\n|$)',
+            r'(?:εως|μεχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
             r'check\s*out\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
         ],
         'nights': [
-            r'(\d+)\s*(?:nights?|νύχτες?|βράδια)',
+            r'(?:για|for)\s+(\d+)\s*(?:nights?|νυχτες?|βραδια)',
+            r'(\d+)\s*(?:nights?|νυχτες?|βραδια)',
         ],
         'adults': [
-            r'(?:adults?|persons?|people|guests?|ενήλικες|άτομα)[\s:]+(\d+)',
-            r'(\d+)\s+(?:adults?|persons?|people|guests?|ενήλικες|άτομα)',
+            r'(?:adults?|persons?|people|guests?|ενηλικες|ατομα)[\s:]+(\d+)',
+            r'(\d+)\s+(?:adults?|persons?|people|guests?|ενηλικες|ατομα)',
         ],
         'children': [
-            r'(?:children|kids|παιδιά)[\s:]+(\d+)',
-            r'(\d+)\s+(?:children|kids|παιδιά)',
+            r'(?:children|kids|παιδια)[\s:]+(\d+)',
+            r'(\d+)\s+(?:children|kids|παιδια)',
         ],
         'room_type': [
-            r'(?:room|accommodation|δωμάτιο|κατάλυμα|loft)[\s:]+(.+?)(?:\n|$)',
+            r'(?:room|accommodation|δωματιο|καταλυμα|loft)[\s:]+(.+?)(?:\n|$)',
         ],
     }
 
