@@ -256,8 +256,6 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
 
     logging.warning("Failed to parse the email with any known format")
     return {'adults': 2, 'children': 0, 'room_type': 'δωμάτιο'}
-can you modify this to include the cleaned_email function
-
 #################################################################dds
 
 def parse_reservation_request(email_body: str) -> Dict[str, Any]:
