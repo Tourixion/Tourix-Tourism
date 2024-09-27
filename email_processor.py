@@ -115,11 +115,11 @@ def parse_greek_date(date_str: str) -> datetime.date:
         'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9, 'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
     }
     patterns = [
-        r'(\d{1,2})\s*([α-ωίϊΐόάέύϋΰήώ]{3,})\s*(\d{2,4})?',  # 9 νοεμβριου 24 or 9 νοεμβριου 2024
-        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',               # 9/11 or 9/11/24
+        r'(\d{1,2})\s*([α-ωίϊΐόάέύϋΰήώ]{3,})\s*(\d{2,4})?',  # 26 οκτωβριου 2024
+        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',               # 26/10 or 26/10/24
     ]
     for pattern in patterns:
-        match = re.match(pattern, date_str)
+        match = re.search(pattern, date_str)
         if match:
             day, month, year = match.groups()
             if month.isalpha():
@@ -139,45 +139,52 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     reservation_info = {}
     
     # Extract check-in and check-out dates
-    check_in_match = re.search(r'(?:άφιξη|από)\s*:?\s*(.+)', email_body, re.IGNORECASE)
-    check_out_match = re.search(r'(?:αναχώρηση|έως|μέχρι)\s*:?\s*(.+)', email_body, re.IGNORECASE)
+    date_pattern = r'(?:από|απο|για|αφιξη|εως|μεχρι|αναχωρηση)\s*:?\s*(\d{1,2}(?:\s*[α-ωίϊΐόάέύϋΰήώ]{3,}|\s*/\s*\d{1,2})(?:\s*/?\s*\d{2,4})?)'
+    dates = re.findall(date_pattern, email_body, re.IGNORECASE)
     
-    if check_in_match:
+    if len(dates) >= 1:
         try:
-            reservation_info['check_in'] = parse_greek_date(check_in_match.group(1))
+            reservation_info['check_in'] = parse_greek_date(dates[0])
+            logging.info(f"Parsed check-in date: {reservation_info['check_in']}")
         except ValueError as e:
             logging.error(f"Failed to parse check-in date: {str(e)}")
     
-    if check_out_match:
+    if len(dates) >= 2:
         try:
-            reservation_info['check_out'] = parse_greek_date(check_out_match.group(1))
+            reservation_info['check_out'] = parse_greek_date(dates[1])
+            logging.info(f"Parsed check-out date: {reservation_info['check_out']}")
         except ValueError as e:
             logging.error(f"Failed to parse check-out date: {str(e)}")
     
     # Extract number of nights
-    nights_match = re.search(r'(\d+)\s*(?:νύχτες|βράδια)', email_body, re.IGNORECASE)
+    nights_match = re.search(r'(\d+)\s*(?:νυχτες|βραδια|διανυκτερευσεις)', email_body, re.IGNORECASE)
     if nights_match:
         reservation_info['nights'] = int(nights_match.group(1))
+        logging.info(f"Parsed number of nights: {reservation_info['nights']}")
     
     # Extract number of adults and children
-    adults_match = re.search(r'(\d+)\s*(?:ενήλικες|άτομα)', email_body, re.IGNORECASE)
-    children_match = re.search(r'(\d+)\s*(?:παιδιά)', email_body, re.IGNORECASE)
+    adults_match = re.search(r'(\d+)\s*(?:ενηλικ(?:ες|ων)|ατομ(?:α|ων))', email_body, re.IGNORECASE)
+    children_match = re.search(r'(\d+)\s*(?:παιδι(?:α|ων))', email_body, re.IGNORECASE)
     
     if adults_match:
         reservation_info['adults'] = int(adults_match.group(1))
+        logging.info(f"Parsed number of adults: {reservation_info['adults']}")
     else:
         reservation_info['adults'] = 2  # Default to 2 adults if not specified
+        logging.info("Using default number of adults: 2")
     
     if children_match:
         reservation_info['children'] = int(children_match.group(1))
+        logging.info(f"Parsed number of children: {reservation_info['children']}")
     
     # Extract room type
-    room_match = re.search(r'(?:δωμάτιο|κατάλυμα):\s*(.+?)(?:\n|$)', email_body, re.IGNORECASE)
+    room_match = re.search(r'(?:δωματιο|καταλυμα):\s*(.+?)(?:\n|$)', email_body, re.IGNORECASE)
     if room_match:
         reservation_info['room_type'] = room_match.group(1).strip()
+        logging.info(f"Parsed room type: {reservation_info['room_type']}")
     
     return reservation_info
-
+    
 #################################################################dds
 
 def parse_reservation_request(email_body: str) -> Dict[str, Any]:
