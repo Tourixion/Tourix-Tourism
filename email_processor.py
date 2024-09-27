@@ -27,11 +27,14 @@ month_mapping = {
     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
     'january': 1, 'february': 2, 'march': 3, 'april': 4, 'june': 6,
     'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
-    'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'μαι': 5, 'ιουν': 6,
+    'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
     'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
-    'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5,
-    'ιούνιος': 6, 'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9,
-    'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
+    'ιανουαριος': 1, 'φεβρουαριος': 2, 'μαρτιος': 3, 'απριλιος': 4, 'μαιος': 5,
+    'ιουνιος': 6, 'ιουλιος': 7, 'αυγουστος': 8, 'σεπτεμβριος': 9,
+    'οκτωβριος': 10, 'νοεμβριος': 11, 'δεκεμβριος': 12,
+    'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5,
+    'ιουνιου': 6, 'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9,
+    'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
 }
 
 def get_staff_email():
@@ -82,35 +85,7 @@ def get_email_content(msg):
 def get_patterns():
     return {
         'check_in': [
-            r'(?:check[ -]?in|arrival|from|άφιξη|από)[\s:]+(.+?)(?:\n|$)',
-            r'(?:από|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
-        ],
-        'check_out': [
-            r'(?:check[ -]?out|departure|to|until|till|αναχώρηση|μέχρι)[\s:]+(.+?)(?:\n|$)',
-            r'(?:έως|μέχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'check\s*out\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
-        ],
-        'nights': [
-            r'(\d+)\s*(?:nights?|νύχτες?|βράδια)',
-        ],
-        'adults': [
-            r'(?:adults?|persons?|people|guests?|ενήλικες|άτομα)[\s:]+(\d+)',
-            r'(\d+)\s+(?:adults?|persons?|people|guests?|ενήλικες|άτομα)',
-        ],
-        'children': [
-            r'(?:children|kids|παιδιά)[\s:]+(\d+)',
-            r'(\d+)\s+(?:children|kids|παιδιά)',
-        ],
-        'room_type': [
-            r'(?:room|accommodation|δωμάτιο|κατάλυμα|loft)[\s:]+(.+?)(?:\n|$)',
-        ],
-    }
-
-def get_patterns():
-    return {
-        'check_in': [
-            r'(?:check[ -]?in|arrival|from|άφιξη|από)[\s:]+(.+?)(?:\n|$)',
+            r'(?:check[ -]?in|arrival|from|άφιξη|από|για)[\s:]+(\d{1,2}(?:\s+)?(?:[α-ωa-z]+)(?:\s+)?(?:\d{2,4})?)',
             r'(?:από|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
             r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
         ],
@@ -147,13 +122,13 @@ def extract_info(email_body, patterns):
 
 
 def parse_custom_date(date_string):
-    date_string = date_string.lower().strip()
+    date_string = strip_accents(date_string.lower().strip())
     
     date_formats = [
         r'(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?',  # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
-        r'(\d{1,2})\s*([a-z]+)(?:\s*(\d{2,4}))?',    # DD Month YYYY
-        r'([a-z]+)\s*(\d{1,2})(?:,?\s*(\d{2,4}))?',  # Month DD, YYYY
-        r'([a-z]+)\s*(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{2,4}))?',  # Month DDst/nd/rd/th, YYYY
+        r'(\d{1,2})\s*([α-ωa-z]+)(?:\s*(\d{2,4}))?',    # DD Month YYYY (including Greek)
+        r'([α-ωa-z]+)\s*(\d{1,2})(?:,?\s*(\d{2,4}))?',  # Month DD, YYYY (including Greek)
+        r'([α-ωa-z]+)\s*(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{2,4}))?',  # Month DDst/nd/rd/th, YYYY (including Greek)
     ]
 
     for date_format in date_formats:
@@ -169,7 +144,7 @@ def parse_custom_date(date_string):
                 day, month, year = groups
             
             if isinstance(month, str) and month.isalpha():
-                month = month[:3]
+                month = month.lower()
                 if month in month_mapping:
                     month = month_mapping[month]
                 else:
@@ -215,7 +190,7 @@ def calculate_checkout(reservation_info):
     return reservation_info
 
 def parse_numeric_fields(reservation_info):
-    for num_key in ['adults', 'children']:
+    for num_key in ['adults', 'children', 'nights']:
         if num_key in reservation_info:
             try:
                 reservation_info[num_key] = int(reservation_info[num_key])
@@ -229,7 +204,7 @@ def parse_numeric_fields(reservation_info):
 
 
 def parse_reservation_request(email_body):
-    email_body = email_body.lower()
+    email_body = strip_accents(email_body.lower())
     patterns = get_patterns()
     
     reservation_info = extract_info(email_body, patterns)
@@ -238,7 +213,7 @@ def parse_reservation_request(email_body):
     reservation_info = parse_numeric_fields(reservation_info)
     
     return reservation_info
-
+    
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
