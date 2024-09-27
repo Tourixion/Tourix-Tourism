@@ -114,23 +114,37 @@ def parse_greek_date(date_str: str) -> datetime.date:
     }
     
     date_str = date_str.lower()
+    
+    # Try DD/MM format first
+    if '/' in date_str:
+        try:
+            day, month = map(int, date_str.split('/'))
+            year = datetime.now().year
+            return datetime(year, month, day).date()
+        except ValueError:
+            logging.debug(f"Failed to parse {date_str} as DD/MM format")
+    
+    # If not DD/MM, try DD month format
     parts = date_str.split()
     if len(parts) >= 2:
-        day = int(parts[0])
-        month_str = parts[1][:3]  # Take only the first three letters
-        year = datetime.now().year
-        
-        if month_str in greek_months:
-            month = greek_months[month_str]
-        else:
-            raise ValueError(f"Unknown month: {month_str}")
-        
-        if len(parts) == 3 and parts[2].isdigit():
-            year = int(parts[2])
-        
-        return datetime(year, month, day).date()
-    else:
-        raise ValueError(f"Unable to parse date: {date_str}")
+        try:
+            day = int(parts[0])
+            month_str = parts[1][:3]  # Take only the first three letters
+            year = datetime.now().year
+            
+            if month_str in greek_months:
+                month = greek_months[month_str]
+            else:
+                raise ValueError(f"Unknown month: {month_str}")
+            
+            if len(parts) == 3 and parts[2].isdigit():
+                year = int(parts[2])
+            
+            return datetime(year, month, day).date()
+        except ValueError:
+            logging.debug(f"Failed to parse {date_str} as DD month format")
+    
+    raise ValueError(f"Unable to parse date: {date_str}")
 
 def parse_format_1(email_body: str) -> Optional[Dict[str, Any]]:
     """Parse format: 'θελω 2 δωματια για 26 οκτωβριου για 3 νυχτες'"""
@@ -152,23 +166,25 @@ def parse_format_1(email_body: str) -> Optional[Dict[str, Any]]:
     return None
 
 def parse_format_2(email_body: str) -> Optional[Dict[str, Any]]:
-    """Parse format: 'Εχετε δωμάτιο για 28/09 εως 30/09?'"""
+    logging.info("Parsing email content (Format 2):")
+    logging.info(email_body)
+    
     pattern = r'(?:για|από)\s*(\d{1,2}/\d{1,2}).*?(?:εως|έως|μέχρι)\s*(\d{1,2}/\d{1,2})'
     match = re.search(pattern, email_body, re.IGNORECASE)
     if match:
-        check_in_str, check_out_str = match.groups()
         try:
-            check_in = parse_greek_date(check_in_str)
-            check_out = parse_greek_date(check_out_str)
+            check_in = parse_greek_date(match.group(1))
+            check_out = parse_greek_date(match.group(2))
             return {
                 'check_in': check_in,
                 'check_out': check_out,
                 'nights': (check_out - check_in).days,
                 'adults': 2,  # Default to 2 adults
+                'children': 0,  # Default to 0 children
                 'room_type': 'δωμάτιο'
             }
-        except ValueError:
-            return None
+        except ValueError as e:
+            logging.error(f"Error parsing dates in format 2: {str(e)}")
     return None
 
 def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
