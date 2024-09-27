@@ -201,6 +201,57 @@ def parse_format_eng_3(email_body: str) -> Optional[Dict[str, Any]]:
                 except ValueError as e:
                     logging.error(f"Error parsing check-out date: {str(e)}")
 
+    def parse_format_eng_4(email_body: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse format: '9nov 24' or '12 nov 24'
+    Handles dates where month and year are concatenated, and month names are abbreviated.
+    """
+    logging.info("Parsing email content (Format 4):")
+    logging.info(email_body)
+    
+    # Pattern to match dates like '9nov 24' or '12 nov 24'
+    pattern = r'(\d{1,2})\s*([a-z]{3,9})\s*(\d{2,4})?'
+    matches = re.findall(pattern, email_body, re.IGNORECASE)
+    
+    if matches:
+        results = []
+        for day, month_str, year in matches:
+            month_str = month_str.lower()[:3]  # Use only the first three letters
+            try:
+                month = greek_months.get(month_str, None)
+                if month is None:
+                    raise ValueError(f"Unknown month: {month_str}")
+
+                year = int(year) if year else datetime.now().year
+                if year < 100:  # Handle two-digit years
+                    year += 2000
+                year = year if year >= 1900 else year + 1900  # Adjust for century
+                
+                results.append({
+                    'check_in': datetime(year, month, int(day)).date(),
+                    'check_out': None,  # To be determined
+                    'nights': None,  # To be determined
+                    'adults': None,  # To be determined
+                    'room_type': 'room'
+                })
+            except ValueError as e:
+                logging.debug(f"Failed to parse {day} {month_str} {year}: {e}")
+        
+        # Process results to determine check_out, nights, etc.
+        if len(results) == 2:  # If both check-in and check-out dates are found
+            check_in = results[0]['check_in']
+            check_out = results[1]['check_in']
+            nights = (check_out - check_in).days
+            return {
+                'check_in': check_in,
+                'check_out': check_out,
+                'nights': nights,
+                'adults': 2,  # Default to 2 adults
+                'room_type': 'room'
+            }
+    
+    return None
+
     if adults is not None and check_in and check_out:
         result = {
             'adults': adults,
@@ -227,7 +278,7 @@ def parse_english_request(email_body: str) -> Dict[str, Any]:
     logging.info(cleaned_email)
     
     # List of parsing functions for different English email formats
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.debug(f"Attempting to parse with format {i}")
@@ -391,6 +442,62 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
         logging.warning("Failed to extract all necessary information")
         return None
 
+def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Greek date formats like '9 Νοε 24' or '12 Νοεμβρίου 24'
+    Handles dates where month and year are concatenated, and month names are abbreviated or full.
+    """
+    logging.info("Parsing email content (Format 4):")
+    logging.info(email_body)
+    
+    # Pattern to match dates like '9 Νοε 24' or '12 Νοεμβρίου 24'
+    pattern = r'(\d{1,2})\s*([α-ωάέήώ]+)\s*(\d{2,4})?'
+    matches = re.findall(pattern, email_body, re.IGNORECASE)
+    
+    if matches:
+        results = []
+        for day, month_str, year in matches:
+            month_str = month_str.lower()
+            month = greek_months.get(month_str[:3], None)  # Use first three letters or full name
+            
+            if month is None:
+                # Try full month names
+                month = greek_months.get(month_str, None)
+            
+            if month is None:
+                raise ValueError(f"Unknown month: {month_str}")
+
+            year = int(year) if year else datetime.now().year
+            if year < 100:  # Handle two-digit years
+                year += 2000
+            year = year if year >= 1900 else year + 1900  # Adjust for century
+            
+            try:
+                results.append({
+                    'check_in': datetime(year, month, int(day)).date(),
+                    'check_out': None,  # To be determined
+                    'nights': None,  # To be determined
+                    'adults': None,  # To be determined
+                    'room_type': 'δωμάτιο'
+                })
+            except ValueError as e:
+                logging.debug(f"Failed to parse {day} {month_str} {year}: {e}")
+        
+        # Process results to determine check_out, nights, etc.
+        if len(results) == 2:  # If both check-in and check-out dates are found
+            check_in = results[0]['check_in']
+            check_out = results[1]['check_in']
+            nights = (check_out - check_in).days
+            return {
+                'check_in': check_in,
+                'check_out': check_out,
+                'nights': nights,
+                'adults': 2,  # Default to 2 adults
+                'room_type': 'δωμάτιο'
+            }
+    
+    return None
+
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Starting to parse Greek reservation request")
     logging.info("Original email content:")
@@ -401,7 +508,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.debug(f"Attempting to parse with format {i}")
