@@ -95,57 +95,69 @@ def parse_reservation_request(email_body):
         'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
     }
 
-    def parse_custom_date(date_string):
-        match = re.match(r'(\d{1,2})\s*([a-zα-ω]+)', date_string)
-        if match:
-            day = int(match.group(1))
-            month_str = match.group(2)
-            if month_str in month_mapping:
-                month = month_mapping[month_str]
-                year = datetime.now().year
-                return datetime(year, month, day).date()
+   def parse_custom_date(date_string):
+    # First, try to parse DD/MM or DD/MM/YYYY format
+    match = re.match(r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?', date_string)
+    if match:
+        day = int(match.group(1))
+        month = int(match.group(2))
+        year = int(match.group(3)) if match.group(3) else datetime.now().year
+        if len(str(year)) == 2:
+            year += 2000  # Assume 20xx for two-digit years
+        return datetime(year, month, day).date()
 
-        components = re.findall(r'\b\w+\b', date_string)
-        day = month = year = None
-        
-        for comp in components:
-            if comp.isdigit():
-                if len(comp) == 4:
-                    year = int(comp)
-                elif int(comp) <= 31:
-                    day = int(comp)
-            elif comp in month_mapping:
-                month = month_mapping[comp]
-        
-        if year is None:
+    # If DD/MM format doesn't match, proceed with existing logic
+    match = re.match(r'(\d{1,2})\s*([a-zα-ω]+)', date_string)
+    if match:
+        day = int(match.group(1))
+        month_str = match.group(2)
+        if month_str in month_mapping:
+            month = month_mapping[month_str]
             year = datetime.now().year
-            if month and day:
-                if datetime(year, month, day) < datetime.now():
-                    year += 1
-        
-        if day and month and year:
             return datetime(year, month, day).date()
-        else:
-            return date_parser.parse(date_string, fuzzy=True).date()
 
-    for date_key in ['check_in', 'check_out']:
-        if date_key in reservation_info:
-            try:
-                reservation_info[date_key] = parse_custom_date(reservation_info[date_key])
-            except ValueError:
-                del reservation_info[date_key]
+    components = re.findall(r'\b\w+\b', date_string)
+    day = month = year = None
+    
+    for comp in components:
+        if comp.isdigit():
+            if len(comp) == 4:
+                year = int(comp)
+            elif int(comp) <= 31:
+                day = int(comp)
+        elif comp in month_mapping:
+            month = month_mapping[comp]
+    
+    if year is None:
+        year = datetime.now().year
+        if month and day:
+            if datetime(year, month, day) < datetime.now():
+                year += 1
+    
+    if day and month and year:
+        return datetime(year, month, day).date()
+    else:
+        return date_parser.parse(date_string, fuzzy=True).date()
 
-    if 'check_in' in reservation_info and 'check_out' not in reservation_info:
-        reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
+# The rest of your code remains the same
+for date_key in ['check_in', 'check_out']:
+    if date_key in reservation_info:
+        try:
+            reservation_info[date_key] = parse_custom_date(reservation_info[date_key])
+        except ValueError:
+            del reservation_info[date_key]
+if 'check_in' in reservation_info and 'check_out' not in reservation_info:
+    reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
+for num_key in ['adults', 'children']:
+    if num_key in reservation_info:
+        reservation_info[num_key] = int(reservation_info[num_key])
+if 'adults' not in reservation_info:
+    reservation_info['adults'] = 2
+return reservation_info
 
-    for num_key in ['adults', 'children']:
-        if num_key in reservation_info:
-            reservation_info[num_key] = int(reservation_info[num_key])
+def is_greek(text):
+    return bool(re.search(r'[\u0370-\u03FF]', text))
 
-    if 'adults' not in reservation_info:
-        reservation_info['adults'] = 2
-
-    return reservation_info
 
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
