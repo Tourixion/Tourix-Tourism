@@ -31,6 +31,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def normalize_text(text: str) -> str:
     return text.lower()
 
+def get_staff_email():
+    return os.environ['STAFF_EMAIL']
+
 def detect_language(text: str) -> str:
     lang = transliterate_detect_language(text)
     return 'el' if lang == 'el' else 'en'
