@@ -116,36 +116,23 @@ def parse_greek_date(date_str: str) -> datetime.date:
     }
     
     date_str = date_str.lower()
-    logging.debug(f"Lowercased date string: {date_str}")
+    for month, num in greek_months.items():
+        if month in date_str:
+            date_str = date_str.replace(month, str(num))
+            break
     
-    patterns = [
-        r'(\d{1,2})\s*([α-ωίϊΐόάέύϋΰήώ]+)(?:\s*(\d{2,4}))?',  # 14 Νοεμβρίου 2024
-        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',               # 14/11 or 14/11/24
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, date_str)
-        if match:
-            logging.debug(f"Matched pattern: {pattern}")
-            day, month, year = match.groups()
-            logging.debug(f"Extracted day: {day}, month: {month}, year: {year}")
-            if month.isalpha():
-                month = greek_months.get(month.lower())
-                if not month:
-                    logging.error(f"Unknown month: {month}")
-                    raise ValueError(f"Unknown month: {month}")
-            else:
-                month = int(month)
-            day = int(day)
-            year = int(year) if year else datetime.now().year
-            if year < 100:
-                year += 2000 if year < 50 else 1900
-            parsed_date = datetime(year, month, day).date()
-            logging.debug(f"Successfully parsed date: {parsed_date}")
+    try:
+        parsed_date = datetime.strptime(date_str, "%d %m %Y").date()
+        logging.debug(f"Successfully parsed date: {parsed_date}")
+        return parsed_date
+    except ValueError:
+        try:
+            parsed_date = datetime.strptime(date_str, "%d %m").date().replace(year=datetime.now().year)
+            logging.debug(f"Successfully parsed date without year: {parsed_date}")
             return parsed_date
-    
-    logging.error(f"Unable to parse date: {date_str}")
-    raise ValueError(f"Unable to parse date: {date_str}")
+        except ValueError:
+            logging.error(f"Failed to parse date: {date_str}")
+            raise ValueError(f"Unable to parse date: {date_str}")
 
 def parse_format_1(email_body: str) -> Optional[Dict[str, Any]]:
     """Parse format: 'θελω 2 δωματια για 26 οκτωβριου για 3 νυχτες'"""
@@ -187,32 +174,33 @@ def parse_format_2(email_body: str) -> Optional[Dict[str, Any]]:
     return None
 
 def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
-    logging.debug("Attempting to parse email using format 3")
-    logging.debug(f"Input email body:\n{email_body}")
+    logging.info("Parsing email content:")
+    logging.info(email_body)
     
     lines = [line.strip().lower() for line in email_body.split('\n') if line.strip()]
-    logging.debug(f"Processed lines: {lines}")
+    logging.info("Processed lines:")
+    for line in lines:
+        logging.info(line)
     
     adults = children = check_in = check_out = None
     
     for line in lines:
-        logging.debug(f"Processing line: {line}")
         if 'άτομα' in line:
             adults_match = re.search(r'(\d+)\s*άτομα', line)
             if adults_match:
                 adults = int(adults_match.group(1))
-                logging.debug(f"Extracted adults: {adults}")
+                logging.info(f"Extracted adults: {adults}")
         elif 'παιδιά' in line:
             children_match = re.search(r'(\d+)\s*παιδιά', line)
             if children_match:
                 children = int(children_match.group(1))
-                logging.debug(f"Extracted children: {children}")
+                logging.info(f"Extracted children: {children}")
         elif 'από' in line:
             date_match = re.search(r'από\s+(.+)', line)
             if date_match:
                 try:
                     check_in = parse_greek_date(date_match.group(1))
-                    logging.debug(f"Extracted check-in date: {check_in}")
+                    logging.info(f"Extracted check-in date: {check_in}")
                 except ValueError as e:
                     logging.error(f"Error parsing check-in date: {str(e)}")
         elif 'εώς' in line or 'έως' in line:
@@ -220,7 +208,7 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
             if date_match:
                 try:
                     check_out = parse_greek_date(date_match.group(1))
-                    logging.debug(f"Extracted check-out date: {check_out}")
+                    logging.info(f"Extracted check-out date: {check_out}")
                 except ValueError as e:
                     logging.error(f"Error parsing check-out date: {str(e)}")
 
@@ -233,7 +221,7 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
             'nights': (check_out - check_in).days,
             'room_type': 'δωμάτιο'
         }
-        logging.debug(f"Successfully parsed reservation: {result}")
+        logging.info(f"Successfully parsed reservation: {result}")
         return result
     else:
         logging.warning("Failed to extract all necessary information")
@@ -241,6 +229,7 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
 
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Starting to parse Greek reservation request")
+    logging.info("Email content:")   
     parsing_functions = [parse_format_1, parse_format_2, parse_format_3]
     
     for i, func in enumerate(parsing_functions, 1):
@@ -253,20 +242,6 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.warning("Failed to parse the email with any known format")
     return {'adults': 2, 'children': 0, 'room_type': 'δωμάτιο'}
 
-def parse_greek_request(email_body: str) -> Dict[str, Any]:
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3]
-    
-    for func in parsing_functions:
-        result = func(email_body)
-        if result:
-            logging.info(f"Successfully parsed using {func.__name__}")
-            return result
-    
-    # If no parsing function succeeds, return a default response
-    logging.warning("Failed to parse the email with any known format")
-    return {'adults': 2, 'children': 0, 'room_type': 'δωμάτιο'}
-
-    
 #################################################################dds
 
 def parse_reservation_request(email_body: str) -> Dict[str, Any]:
