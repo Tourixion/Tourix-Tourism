@@ -65,165 +65,71 @@ def clean_email_body(email_body: str) -> str:
 ###############################################################################################d
 
 def parse_english_date(date_str: str) -> datetime.date:
-    """
-    Parse various English date formats into a datetime.date object.
-    Supports formats like "9 Nov 24", "9 November 2024", "9/11/24", "9/11".
-    """
-    # Define month abbreviations and full names
     months = {
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
-        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5,
-        'june': 6, 'july': 7, 'august': 8, 'september': 9, 'october': 10,
-        'november': 11, 'december': 12
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
     }
-    
-    # Normalize the input
-    date_str = date_str.lower().strip()
-
-    # Pattern to handle formats like "9 Nov 24", "9 November 2024"
-    pattern_full_month = r'(\d{1,2})\s*([a-z]+)\s*(\d{2,4})?'
-    # Pattern to handle formats like "9/11", "9/11/24"
-    pattern_dd_mm = r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?'
-    
-    # Check for DD/MM/YYYY format
-    if '/' in date_str:
-        match = re.match(pattern_dd_mm, date_str)
+    patterns = [
+        r'(\d{1,2})\s*([a-z]{3,9})\s*(\d{2,4})?',  # 9 nov 24 or 9 november 2024
+        r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',    # 9/11 or 9/11/24
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, date_str)
         if match:
-            day, month, year = map(int, match.groups())
-            if year < 100:  # Handle two-digit years
+            day, month, year = match.groups()
+            if month.isalpha():
+                month = months[month[:3]]
+            else:
+                month = int(month)
+            day = int(day)
+            year = int(year) if year else datetime.now().year
+            if year < 100:
                 year += 2000
-            year = year if year >= 1900 else year + 1900  # Adjust year for centuries
-            try:
-                return datetime(year, month, day).date()
-            except ValueError:
-                logging.debug(f"Failed to parse {date_str} as DD/MM/YYYY format")
-    
-    # Check for DD Month YYYY format
-    match = re.match(pattern_full_month, date_str)
-    if match:
-        day, month_str, year = match.groups()
-        day = int(day)
-        month = months.get(month_str[:3], None)  # Use only first three letters of month
-        if month is None:
-            raise ValueError(f"Unknown month: {month_str}")
-        if year:
-            year = int(year)
-            if year < 100:  # Handle two-digit years
-                year += 2000
-            year = year if year >= 1900 else year + 1900  # Adjust year for centuries
-        else:
-            year = datetime.now().year  # Use current year if year is not provided
-        try:
             return datetime(year, month, day).date()
-        except ValueError:
-            logging.debug(f"Failed to parse {date_str} as DD Month YYYY format")
-
     raise ValueError(f"Unable to parse date: {date_str}")
-    
-def parse_format_eng_1(email_body: str) -> Optional[Dict[str, Any]]:
-    """Parse format: 'I want 2 rooms for 26 October for 3 nights'"""
-    pattern = r'(\d+)\s*(?:rooms).*?(\d+)\s*([A-Za-z]+).*?(\d+)\s*(?:nights|days)'
-    match = re.search(pattern, email_body, re.IGNORECASE)
-    if match:
-        rooms, day, month, nights = match.groups()
-        try:
-            check_in = parse_english_date(f"{day} {month}")
-            return {
-                'check_in': check_in,
-                'check_out': check_in + timedelta(days=int(nights)),
-                'nights': int(nights),
-                'adults': int(rooms) * 2,  # Assuming 2 adults per room
-                'room_type': 'room' if int(rooms) == 1 else 'rooms'
-            }
-        except ValueError:
-            return None
-    return None
-
-def parse_format_eng_2(email_body: str) -> Optional[Dict[str, Any]]:
-    logging.info("Parsing email content (Format 2):")
-    logging.info(email_body)
-    
-    pattern = r'(?:from|starting)\s*(\d{1,2}/\d{1,2}).*?(?:to|until)\s*(\d{1,2}/\d{1,2})'
-    match = re.search(pattern, email_body, re.IGNORECASE)
-    if match:
-        try:
-            check_in = parse_english_date(match.group(1))
-            check_out = parse_english_date(match.group(2))
-            return {
-                'check_in': check_in,
-                'check_out': check_out,
-                'nights': (check_out - check_in).days,
-                'adults': 2,  # Default to 2 adults
-                'children': 0,  # Default to 0 children
-                'room_type': 'room'
-            }
-        except ValueError as e:
-            logging.error(f"Error parsing dates in format 2: {str(e)}")
-    return None
-
-def parse_format_eng_3(email_body: str) -> Optional[Dict[str, Any]]:
-    logging.info("Parsing email content:")
-    logging.info(email_body)
-    
-    lines = [line.strip().lower() for line in email_body.split('\n') if line.strip()]
-    logging.info("Processed lines:")
-    for line in lines:
-        logging.info(line)
-    
-    adults = children = check_in = check_out = None
-    
-    for line in lines:
-        if 'adults' in line:
-            adults_match = re.search(r'(\d+)\s*adults', line)
-            if adults_match:
-                adults = int(adults_match.group(1))
-                logging.info(f"Extracted adults: {adults}")
-        elif 'children' in line:
-            children_match = re.search(r'(\d+)\s*children', line)
-            if children_match:
-                children = int(children_match.group(1))
-                logging.info(f"Extracted children: {children}")
-        elif 'from' in line:
-            date_match = re.search(r'from\s+(.+)', line)
-            if date_match:
-                try:
-                    check_in = parse_english_date(date_match.group(1))
-                    logging.info(f"Extracted check-in date: {check_in}")
-                except ValueError as e:
-                    logging.error(f"Error parsing check-in date: {str(e)}")
-        elif 'to' in line:
-            date_match = re.search(r'to\s+(.+)', line)
-            if date_match:
-                try:
-                    check_out = parse_english_date(date_match.group(1))
-                    logging.info(f"Extracted check-out date: {check_out}")
-                except ValueError as e:
-                    logging.error(f"Error parsing check-out date: {str(e)}")
 
 def parse_english_request(email_body: str) -> Dict[str, Any]:
-    logging.info("Starting to parse English reservation request")
-    logging.info("Original email content:")
-    logging.info(email_body)
-    
-    # Clean the email body (remove any unnecessary characters, line breaks, etc.)
-    cleaned_email = clean_email_body(email_body)
-    logging.info("Cleaned email content:")
-    logging.info(cleaned_email)
-    
-    # List of parsing functions for different English email formats
-    parsing_functions = [parse_format_eng_1, parse_format_eng_2, parse_format_eng_3]
-    
-    for i, func in enumerate(parsing_functions, 1):
-        logging.debug(f"Attempting to parse with format {i}")
-        result = func(cleaned_email)  # Use each parsing function on the cleaned email
-        if result:
-            logging.info(f"Successfully parsed using format {i}")
-            return result  # Return the parsed result if successful
-    
-    # If no parsing function succeeds, return default values
-    logging.warning("Failed to parse the email with any known format")
-    return {'adults': 2, 'children': 0, 'room_type': 'room'}  # Default to 2 adults, 0 children, 'room'
+    reservation_info = {}
+
+    # Extract check-in and check-out dates
+    check_in_match = re.search(r'check\sin\s:?\s(.+)', email_body, re.IGNORECASE)
+    check_out_match = re.search(r'check\sout\s:?\s(.+)', email_body, re.IGNORECASE)
+
+    if check_in_match:
+        try:
+            reservation_info['check_in'] = parse_english_date(check_in_match.group(1))
+        except ValueError as e:
+            logging.error(f"Failed to parse check-in date: {str(e)}")
+
+    if check_out_match:
+        try:
+            reservation_info['check_out'] = parse_english_date(check_out_match.group(1))
+        except ValueError as e:
+            logging.error(f"Failed to parse check-out date: {str(e)}")
+
+    # Extract number of nights
+    nights_match = re.search(r'(\d+)\s*nights?', email_body, re.IGNORECASE)
+    if nights_match:
+        reservation_info['nights'] = int(nights_match.group(1))
+
+    # Extract number of adults and children
+    adults_match = re.search(r'(\d+)\s(?:adults?|persons?|people|guests?)', email_body, re.IGNORECASE)
+    children_match = re.search(r'(\d+)\s(?:children|kids)', email_body, re.IGNORECASE)
+
+    if adults_match:
+        reservation_info['adults'] = int(adults_match.group(1))
+    else:
+        reservation_info['adults'] = 2  # Default to 2 adults if not specified
+
+    if children_match:
+        reservation_info['children'] = int(children_match.group(1))
+
+    # Extract room type
+    room_match = re.search(r'(?:room|accommodation):\s*(.+?)(?:\n|$)', email_body, re.IGNORECASE)
+    if room_match:
+        reservation_info['room_type'] = room_match.group(1).strip()
+
+    return reservation_info
 
 #################################################################d
 def parse_greek_date(date_str: str) -> datetime.date:
