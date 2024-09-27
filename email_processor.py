@@ -113,10 +113,13 @@ def parse_greek_date(date_str: str) -> datetime.date:
         'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5, 'ιουνιου': 6,
         'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9, 'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
     }
+    
+    date_str = date_str.lower()  # Convert to lowercase
     patterns = [
-        r'(\d{1,2})\s*([α-ωίϊΐόάέύϋΰήώ]{3,})\s*(\d{2,4})?',  # 14 Νοεμβρίου 2024
+        r'(\d{1,2})\s*([α-ωίϊΐόάέύϋΰήώ]+)(?:\s*(\d{2,4}))?',  # 14 Νοεμβρίου 2024
         r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',               # 14/11 or 14/11/24
     ]
+    
     for pattern in patterns:
         match = re.search(pattern, date_str)
         if match:
@@ -130,8 +133,9 @@ def parse_greek_date(date_str: str) -> datetime.date:
             day = int(day)
             year = int(year) if year else datetime.now().year
             if year < 100:
-                year += 2000
+                year += 2000 if year < 50 else 1900
             return datetime(year, month, day).date()
+    
     raise ValueError(f"Unable to parse date: {date_str}")
 
 def parse_format_1(email_body: str) -> Optional[Dict[str, Any]]:
@@ -180,33 +184,43 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
     από 14 Νοεμβρίου
     εώς 19 Νοεμβρίου
     """
-    lines = email_body.strip().split('\n')
-    if len(lines) != 4:
-        return None
-
-    try:
-        adults_match = re.match(r'(\d+)\s*άτομα', lines[0])
-        children_match = re.match(r'(\d+)\s*παιδιά', lines[1])
-        check_in_match = re.match(r'από\s+(\d+\s+\w+)', lines[2])
-        check_out_match = re.match(r'(?:εώς|έως)\s+(\d+\s+\w+)', lines[3])
-
-        if adults_match and children_match and check_in_match and check_out_match:
-            adults = int(adults_match.group(1))
-            children = int(children_match.group(1))
-            check_in = parse_greek_date(check_in_match.group(1))
-            check_out = parse_greek_date(check_out_match.group(1))
-
-            return {
-                'adults': adults,
-                'children': children,
-                'check_in': check_in,
-                'check_out': check_out,
-                'nights': (check_out - check_in).days,
-                'room_type': 'δωμάτιο'
-            }
-    except (ValueError, AttributeError) as e:
-        logging.error(f"Error parsing format 3: {str(e)}")
+    lines = [line.strip().lower() for line in email_body.split('\n') if line.strip()]
     
+    adults = children = check_in = check_out = None
+    
+    for line in lines:
+        if 'άτομα' in line:
+            adults_match = re.search(r'(\d+)\s*άτομα', line)
+            if adults_match:
+                adults = int(adults_match.group(1))
+        elif 'παιδιά' in line:
+            children_match = re.search(r'(\d+)\s*παιδιά', line)
+            if children_match:
+                children = int(children_match.group(1))
+        elif 'από' in line:
+            date_match = re.search(r'από\s+(.+)', line)
+            if date_match:
+                try:
+                    check_in = parse_greek_date(date_match.group(1))
+                except ValueError as e:
+                    logging.error(f"Error parsing check-in date: {str(e)}")
+        elif 'εώς' in line or 'έως' in line:
+            date_match = re.search(r'(?:εώς|έως)\s+(.+)', line)
+            if date_match:
+                try:
+                    check_out = parse_greek_date(date_match.group(1))
+                except ValueError as e:
+                    logging.error(f"Error parsing check-out date: {str(e)}")
+
+    if adults is not None and check_in and check_out:
+        return {
+            'adults': adults,
+            'children': children if children is not None else 0,
+            'check_in': check_in,
+            'check_out': check_out,
+            'nights': (check_out - check_in).days,
+            'room_type': 'δωμάτιο'
+        }
     return None
 
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
