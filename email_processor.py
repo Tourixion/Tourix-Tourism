@@ -388,7 +388,7 @@ def send_partial_info_response(staff_email: str, customer_email: str, reservatio
     
     send_email(staff_email, subject, body)
 
-def send_error_notification(email_body: str, reservation_info: Dict[str, Any]) -> None:
+def send_error_notification(email_body: str, reservation_info: Dict[str, Any], original_email) -> None:
     staff_email = get_staff_email()
     subject = "Error Processing Reservation Request"
     body = f"""
@@ -402,7 +402,7 @@ def send_error_notification(email_body: str, reservation_info: Dict[str, Any]) -
 
     Please review this request manually and respond to the customer as appropriate.
     """
-    send_email(staff_email, subject, body)
+    send_email_with_original(staff_email, subject, body, original_email)
 
 def process_email(email_msg, sender_address: str) -> None:
     logging.info("Starting to process email")
