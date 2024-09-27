@@ -162,7 +162,6 @@ def parse_format_eng_2(email_body: str) -> Optional[Dict[str, Any]]:
             logging.error(f"Error parsing dates in format 2: {str(e)}")
     return None
 
-
 def parse_format_eng_3(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Parsing email content:")
     logging.info(email_body)
