@@ -43,6 +43,142 @@ month_mapping = {
 
 def get_staff_email():
     return os.environ['STAFF_EMAIL']
+import spacy
+from spacy.matcher import Matcher
+from datetime import datetime, timedelta
+import re
+from transliterate import translit
+import logging
+import imaplib
+import email
+from email.header import decode_header
+import os
+import requests
+from bs4 import BeautifulSoup
+import socket
+import ssl
+import sys
+import time
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+import traceback
+from typing import List, Dict, Any
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Load spaCy model
+try:
+    nlp = spacy.load("en_core_web_sm")
+    logging.info("Loaded en_core_web_sm model successfully")
+except:
+    logging.error("Failed to load en_core_web_sm model. Make sure it's installed.")
+    raise
+
+def transliterate_greek(text):
+    return translit(text, 'el', reversed=True)
+
+# Define patterns for matcher
+matcher = Matcher(nlp.vocab)
+
+# Date patterns
+matcher.add("DATE", [
+    [{"LIKE_NUM": True}, {"LOWER": {"IN": ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]}}],
+    [{"LIKE_NUM": True}, {"LOWER": {"IN": ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]}}],
+    [{"LIKE_NUM": True}, {"LOWER": "/"}, {"LIKE_NUM": True}]
+])
+
+# Number of nights pattern
+matcher.add("NIGHTS", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["nights", "night"]}}]])
+
+# Number of adults pattern
+matcher.add("ADULTS", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["adults", "adult", "people", "persons", "guests"]}}]])
+
+# Number of children pattern
+matcher.add("CHILDREN", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["children", "child", "kids", "kid"]}}]])
+
+def parse_reservation_request(email_body):
+    logging.info(f"Parsing reservation request")
+    
+    # Detect language and process accordingly
+    if re.search(r'[α-ωΑ-Ω]', email_body):
+        logging.info("Detected Greek text, transliterating")
+        doc = nlp(transliterate_greek(email_body))
+    else:
+        doc = nlp(email_body)
+
+    matches = matcher(doc)
+
+    reservation_info = {}
+
+    for match_id, start, end in matches:
+        span = doc[start:end]
+        label = nlp.vocab.strings[match_id]
+
+        if label == "DATE":
+            if "check_in" not in reservation_info:
+                reservation_info["check_in"] = span.text
+                logging.info(f"Extracted check-in date: {span.text}")
+            elif "check_out" not in reservation_info:
+                reservation_info["check_out"] = span.text
+                logging.info(f"Extracted check-out date: {span.text}")
+        elif label == "NIGHTS":
+            reservation_info["nights"] = span[0].text
+            logging.info(f"Extracted number of nights: {span[0].text}")
+        elif label == "ADULTS":
+            reservation_info["adults"] = span[0].text
+            logging.info(f"Extracted number of adults: {span[0].text}")
+        elif label == "CHILDREN":
+            reservation_info["children"] = span[0].text
+            logging.info(f"Extracted number of children: {span[0].text}")
+
+    # Convert dates to datetime objects
+    for date_key in ["check_in", "check_out"]:
+        if date_key in reservation_info:
+            try:
+                reservation_info[date_key] = parse_date(reservation_info[date_key])
+                logging.info(f"Parsed {date_key}: {reservation_info[date_key]}")
+            except ValueError as e:
+                logging.error(f"Failed to parse {date_key}: {str(e)}")
+                del reservation_info[date_key]
+
+    # Calculate check-out date if not provided
+    if "check_in" in reservation_info and "check_out" not in reservation_info and "nights" in reservation_info:
+        nights = int(reservation_info["nights"])
+        reservation_info["check_out"] = reservation_info["check_in"] + timedelta(days=nights)
+        logging.info(f"Calculated check-out date: {reservation_info['check_out']}")
+
+    # Set default adults if not specified
+    if "adults" not in reservation_info:
+        reservation_info["adults"] = 2
+        logging.info("Set default number of adults to 2")
+
+    logging.info(f"Final parsed reservation info: {reservation_info}")
+    return reservation_info
+
+def parse_date(date_string):
+    date_formats = [
+        "%d %B",  # 15 October
+        "%d %b",  # 15 Oct
+        "%d/%m",  # 15/10
+        "%d-%m",  # 15-10
+        "%B %d",  # October 15
+        "%b %d",  # Oct 15
+    ]
+    
+    for date_format in date_formats:
+        try:
+            date = datetime.strptime(date_string, date_format).replace(year=datetime.now().year).date()
+            # If the parsed date is in the past, assume it's for next year
+            if date < datetime.now().date():
+                date = date.replace(year=date.year + 1)
+            return date
+        except ValueError:
+            continue
+    
+    raise ValueError(f"Unable to parse date: {date_string}")
+# Existing functions (keep these as they were)
+def get_staff_email():
+    return os.environ['STAFF_EMAIL']
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -86,120 +222,6 @@ def get_email_content(msg):
     else:
         return msg.get_payload(decode=True).decode()
 
-def get_patterns():
-    return {
-        'check_in': [
-            r'(?:check[ -]?in|arrival|from|αφιξη|απο|για)[\s:]+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:εως|μεχρι|to|till)',
-            r'(?:απο|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
-        ],
-        'check_out': [
-            r'(?:check[ -]?out|departure|to|until|till|αναχωρηση|μεχρι|εως)[\s:]+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'(?:εως|μεχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'check\s*out\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
-        ],
-        'nights': [
-            r'(?:για|for)\s+(\d+)\s*(?:nights?|νυχτες?|βραδια)',
-            r'(\d+)\s*(?:nights?|νυχτες?|βραδια)',
-        ],
-        'adults': [
-            r'(?:adults?|persons?|people|guests?|ενηλικες|ατομα)[\s:]+(\d+)',
-            r'(\d+)\s+(?:adults?|persons?|people|guests?|ενηλικες|ατομα)',
-        ],
-        'children': [
-            r'(?:children|kids|παιδια)[\s:]+(\d+)',
-            r'(\d+)\s+(?:children|kids|παιδια)',
-        ],
-        'room_type': [
-            r'(?:room|accommodation|δωματιο|καταλυμα|loft)[\s:]+(.+?)(?:\n|$)',
-        ],
-    }
-
-def extract_info(email_body, patterns):
-    reservation_info = {}
-    for key, pattern_list in patterns.items():
-        for pattern in pattern_list:
-            match = re.search(pattern, email_body)
-            if match:
-                reservation_info[key] = match.group(1).strip()
-                break
-    return reservation_info
-
-
-def parse_custom_date(date_string):
-    date_string = strip_accents(date_string.lower().strip())
-    current_year = datetime.now().year
-    
-    date_formats = [
-        r'(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?',  # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
-        r'(\d{1,2})\s*([α-ωa-z]+)(?:\s*(\d{2,4}))?',    # DD Month YYYY (including Greek)
-        r'([α-ωa-z]+)\s*(\d{1,2})(?:,?\s*(\d{2,4}))?',  # Month DD, YYYY (including Greek)
-        r'([α-ωa-z]+)\s*(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{2,4}))?',  # Month DDst/nd/rd/th, YYYY (including Greek)
-    ]
-
-    for date_format in date_formats:
-        match = re.search(date_format, date_string, re.IGNORECASE)
-        if match:
-            groups = match.groups()
-            
-            if groups[0].isalpha():
-                month, day, year = groups
-            elif groups[1].isalpha():
-                day, month, year = groups
-            else:
-                day, month, year = groups
-            
-            if isinstance(month, str) and month.isalpha():
-                month = month.lower()
-                if month in month_mapping:
-                    month = month_mapping[month]
-                else:
-                    raise ValueError(f"Unknown month: {month}")
-            
-            day = int(day)
-            month = int(month)
-            year = int(year) if year else current_year
-
-            if year and len(str(year)) == 2:
-                year += 2000 if year < 50 else 1900
-
-            try:
-                return datetime(year, month, day).date()
-            except ValueError as e:
-                raise ValueError(f"Invalid date: {date_string}. Error: {str(e)}")
-
-    # If no format matches, try dateutil parser as a fallback
-    try:
-        parsed_date = date_parser.parse(date_string, fuzzy=True).date()
-        # If the parsed year is in the past, assume it's for next year
-        if parsed_date.year < current_year:
-            parsed_date = parsed_date.replace(year=current_year + 1)
-        return parsed_date
-    except ValueError:
-        raise ValueError(f"Unable to parse date: {date_string}")
-
-def parse_dates(reservation_info):
-    for date_key in ['check_in', 'check_out']:
-        if date_key in reservation_info:
-            try:
-                reservation_info[date_key] = parse_custom_date(reservation_info[date_key])
-            except ValueError as e:
-                logging.warning(f"Failed to parse {date_key} date: {str(e)}")
-                del reservation_info[date_key]
-    return reservation_info
-
-def calculate_checkout(reservation_info):
-    if 'check_in' in reservation_info:
-        if 'nights' in reservation_info:
-            try:
-                nights = int(reservation_info['nights'])
-                reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=nights)
-            except ValueError:
-                logging.warning("Failed to calculate check-out date based on nights")
-        elif 'check_out' not in reservation_info:
-            reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
-    return reservation_info
 
 def parse_numeric_fields(reservation_info):
     for num_key in ['adults', 'children', 'nights']:
@@ -214,27 +236,7 @@ def parse_numeric_fields(reservation_info):
         reservation_info['adults'] = 2
     return reservation_info
 
-def parse_reservation_request(email_body):
-    email_body = strip_accents(email_body.lower())
-    patterns = get_patterns()
-    
-    reservation_info = extract_info(email_body, patterns)
-    reservation_info = parse_numeric_fields(reservation_info)
-    reservation_info = parse_dates(reservation_info)
-    reservation_info = calculate_checkout(reservation_info)
-    
-    # Ensure 'nights' is correctly reflected in the reservation_info
-    if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        nights = (reservation_info['check_out'] - reservation_info['check_in']).days
-        reservation_info['nights'] = nights
-    
-    # Remove 'room_type' if it contains date information (likely a parsing error)
-    if 'room_type' in reservation_info and re.search(r'\d{1,2}[/.-]\d{1,2}', reservation_info['room_type']):
-        del reservation_info['room_type']
-    
-    logging.info(f"Parsed reservation info: {reservation_info}")
-    
-    return reservation_info
+
     
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
@@ -469,22 +471,13 @@ def process_email(email_msg, sender_address: str) -> None:
     
     staff_email = get_staff_email()
     
-    # Check if we have at least one date (either check-in or check-out)
-    has_date = 'check_in' in reservation_info or 'check_out' in reservation_info
-    
-    if has_date:
-        logging.info("At least one reservation date found, proceeding with available information")
-        
-        # If we're missing check-in or check-out, set a default range
-        if 'check_in' not in reservation_info and 'check_out' in reservation_info:
-            reservation_info['check_in'] = reservation_info['check_out'] - timedelta(days=1)
-        elif 'check_out' not in reservation_info and 'check_in' in reservation_info:
-            reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
+    if 'check_in' in reservation_info and 'check_out' in reservation_info:
+        logging.info("Reservation dates found, proceeding to web scraping")
         
         try:
             availability_data = scrape_thekokoon_availability(
-                reservation_info.get('check_in', datetime.now().date()),
-                reservation_info.get('check_out', datetime.now().date() + timedelta(days=1)),
+                reservation_info['check_in'],
+                reservation_info['check_out'],
                 reservation_info.get('adults', 2),
                 reservation_info.get('children', 0)
             )
@@ -500,7 +493,7 @@ def process_email(email_msg, sender_address: str) -> None:
             logging.error(f"Error during web scraping: {str(e)}")
             send_partial_info_response(staff_email, sender_address, reservation_info, is_greek_email, email_msg)
     else:
-        logging.warning("No reservation dates found. Sending error notification to staff.")
+        logging.warning("Failed to parse reservation dates. Sending error notification to staff.")
         send_error_notification(email_body, reservation_info, email_msg)
     
     logging.info("Email processing completed")
