@@ -76,13 +76,13 @@ def parse_reservation_request(email_body):
         'children': r'(?:children|kids|παιδιά)[\s:]+(\d+)',
         'room_type': r'(?:room|accommodation|δωμάτιο|κατάλυμα)[\s:]+(.+?)(?:\n|$)'
     }
-    
+
     reservation_info = {}
     for key, pattern in patterns.items():
         match = re.search(pattern, email_body)
         if match:
             reservation_info[key] = match.group(1).strip()
-    
+
     month_mapping = {
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
         'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
@@ -94,8 +94,7 @@ def parse_reservation_request(email_body):
         'ιούνιος': 6, 'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9,
         'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
     }
-
-   def parse_custom_date(date_string):
+    def parse_custom_date(date_string):
     # First, try to parse DD/MM or DD/MM/YYYY format
     match = re.match(r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?', date_string)
     if match:
@@ -158,9 +157,6 @@ return reservation_info
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
-
-def is_greek(text):
-    return bool(re.search(r'[\u0370-\u03FF]', text))
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     base_url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
