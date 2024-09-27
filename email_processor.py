@@ -45,44 +45,9 @@ month_mapping = {
     'ιουνιου': 6, 'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9,
     'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
 }
-greek_month_mapping = {
-    'ιανουαρίου': 1, 'φεβρουαρίου': 2, 'μαρτίου': 3, 'απριλίου': 4, 'μαΐου': 5, 'ιουνίου': 6,
-    'ιουλίου': 7, 'αυγούστου': 8, 'σεπτεμβρίου': 9, 'οκτωβρίου': 10, 'νοεμβρίου': 11, 'δεκεμβρίου': 12,
-}
 
-# Greek number mapping
-greek_number_mapping = {
-    'ένα': 1, 'δύο': 2, 'τρία': 3, 'τέσσερα': 4, 'πέντε': 5, 'έξι': 6, 'επτά': 7, 'οκτώ': 8, 'εννιά': 9, 'δέκα': 10
-}
 
-def parse_greek_dates(text):
-    """
-    Parse Greek date formats such as "26 Οκτωβρίου" and convert them to datetime objects.
-    """
-    logging.info("Parsing Greek dates")
-    
-    # Use regex to find dates like "26 Οκτωβρίου" or "14 Νοεμβρίου"
-    date_regex = r"(\d{1,2})\s([α-ωΑ-Ω]+)"
-    match = re.search(date_regex, text)
-    
-    if match:
-        day = int(match.group(1))
-        month_str = match.group(2).lower()
-        
-        if month_str in greek_month_mapping:
-            month = greek_month_mapping[month_str]
-            year = datetime.now().year  # Assume current year
-            date = datetime(year, month, day)
-            return date
-    return None
 
-def extract_greek_numbers(text):
-    """
-    Replace Greek number words like 'δύο' with their numeric equivalents.
-    """
-    for greek_word, num in greek_number_mapping.items():
-        text = text.replace(greek_word, str(num))
-    return text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -117,18 +82,18 @@ matcher.add("ADULTS", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["adults", "adult",
 # Number of children pattern
 matcher.add("CHILDREN", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["children", "child", "kids", "kid"]}}]])
 
-def parse_reservation_request(email_body):
-    logging.info(f"Parsing reservation request")
-
-    # Handle Greek language processing without full transliteration
-    if re.search(r'[α-ωΑ-Ω]', email_body):
-        logging.info("Detected Greek text, processing in Greek")
-        email_body = extract_greek_numbers(email_body)
-        doc = nlp(email_body)
-    else:
-        doc = nlp(email_body)
+def parse_reservation_request(text):
+    logging.info(f"Parsing reservation request: {text}")
     
+    # Detect language and process accordingly
+    if re.search(r'[α-ωΑ-Ω]', text):
+        logging.info("Detected Greek text, transliterating")
+        doc = nlp(transliterate_greek(text))
+    else:
+        doc = nlp(text)
+
     matches = matcher(doc)
+
     reservation_info = {}
 
     for match_id, start, end in matches:
@@ -136,14 +101,12 @@ def parse_reservation_request(email_body):
         label = nlp.vocab.strings[match_id]
 
         if label == "DATE":
-            date = parse_greek_dates(span.text)
-            if date:
-                if "check_in" not in reservation_info:
-                    reservation_info["check_in"] = date
-                    logging.info(f"Extracted check-in date: {date}")
-                elif "check_out" not in reservation_info:
-                    reservation_info["check_out"] = date
-                    logging.info(f"Extracted check-out date: {date}")
+            if "check_in" not in reservation_info:
+                reservation_info["check_in"] = span.text
+                logging.info(f"Extracted check-in date: {span.text}")
+            elif "check_out" not in reservation_info:
+                reservation_info["check_out"] = span.text
+                logging.info(f"Extracted check-out date: {span.text}")
         elif label == "NIGHTS":
             reservation_info["nights"] = span[0].text
             logging.info(f"Extracted number of nights: {span[0].text}")
@@ -154,11 +117,26 @@ def parse_reservation_request(email_body):
             reservation_info["children"] = span[0].text
             logging.info(f"Extracted number of children: {span[0].text}")
 
-    # Calculate check-out date if missing but check-in and nights are provided
+    # Convert dates to datetime objects
+    for date_key in ["check_in", "check_out"]:
+        if date_key in reservation_info:
+            try:
+                reservation_info[date_key] = parse_date(reservation_info[date_key])
+                logging.info(f"Parsed {date_key}: {reservation_info[date_key]}")
+            except ValueError as e:
+                logging.error(f"Failed to parse {date_key}: {str(e)}")
+                del reservation_info[date_key]
+
+    # Calculate check-out date if not provided
     if "check_in" in reservation_info and "check_out" not in reservation_info and "nights" in reservation_info:
         nights = int(reservation_info["nights"])
         reservation_info["check_out"] = reservation_info["check_in"] + timedelta(days=nights)
         logging.info(f"Calculated check-out date: {reservation_info['check_out']}")
+
+    # Set default adults if not specified
+    if "adults" not in reservation_info:
+        reservation_info["adults"] = 2
+        logging.info("Set default number of adults to 2")
 
     logging.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
