@@ -37,6 +37,29 @@ def get_staff_email():
 def detect_language(text: str) -> str:
     lang = transliterate_detect_language(text)
     return 'el' if lang == 'el' else 'en'
+
+def clean_email_body(email_body: str) -> str:
+    """Remove forwarded message headers and other email-specific formatting."""
+    # Remove forwarded message header
+    email_body = re.sub(r'---------- Forwarded message ---------.*?(?=\n\n)', '', email_body, flags=re.DOTALL)
+    
+    # Remove email headers (From:, Date:, Subject:, To:)
+    email_body = re.sub(r'^(From|Date|Subject|To):.*$', '', email_body, flags=re.MULTILINE)
+    
+    # Remove any remaining lines that look like email headers
+    email_body = re.sub(r'^[^:]+:.*$', '', email_body, flags=re.MULTILINE)
+    
+    # Remove empty lines
+    email_body = re.sub(r'\n\s*\n', '\n', email_body)
+    
+    # Strip leading and trailing whitespace
+    email_body = email_body.strip()
+    
+    logging.info("Cleaned email body:")
+    logging.info(email_body)
+    
+    return email_body
+
 ###############################################################################################d
 
 def parse_english_date(date_str: str) -> datetime.date:
@@ -64,11 +87,20 @@ def parse_english_date(date_str: str) -> datetime.date:
     raise ValueError(f"Unable to parse date: {date_str}")
 
 def parse_english_request(email_body: str) -> Dict[str, Any]:
+    logging.info("Starting to parse English reservation request")
+    logging.info("Original email content:")
+    logging.info(email_body)
+    
+    # Clean the email body
+    cleaned_email = clean_email_body(email_body)
+    logging.info("Cleaned email content:")
+    logging.info(cleaned_email)
+    
     reservation_info = {}
     
     # Extract check-in and check-out dates
-    check_in_match = re.search(r'check\s*in\s*:?\s*(.+)', email_body, re.IGNORECASE)
-    check_out_match = re.search(r'check\s*out\s*:?\s*(.+)', email_body, re.IGNORECASE)
+    check_in_match = re.search(r'check\s*in\s*:?\s*(.+)', cleaned_email, re.IGNORECASE)
+    check_out_match = re.search(r'check\s*out\s*:?\s*(.+)', cleaned_email, re.IGNORECASE)
     
     if check_in_match:
         try:
@@ -83,13 +115,13 @@ def parse_english_request(email_body: str) -> Dict[str, Any]:
             logging.error(f"Failed to parse check-out date: {str(e)}")
     
     # Extract number of nights
-    nights_match = re.search(r'(\d+)\s*nights?', email_body, re.IGNORECASE)
+    nights_match = re.search(r'(\d+)\s*nights?', cleaned_email, re.IGNORECASE)
     if nights_match:
         reservation_info['nights'] = int(nights_match.group(1))
     
     # Extract number of adults and children
-    adults_match = re.search(r'(\d+)\s*(?:adults?|persons?|people|guests?)', email_body, re.IGNORECASE)
-    children_match = re.search(r'(\d+)\s*(?:children|kids)', email_body, re.IGNORECASE)
+    adults_match = re.search(r'(\d+)\s*(?:adults?|persons?|people|guests?)', cleaned_email, re.IGNORECASE)
+    children_match = re.search(r'(\d+)\s*(?:children|kids)', cleaned_email, re.IGNORECASE)
     
     if adults_match:
         reservation_info['adults'] = int(adults_match.group(1))
@@ -100,7 +132,7 @@ def parse_english_request(email_body: str) -> Dict[str, Any]:
         reservation_info['children'] = int(children_match.group(1))
     
     # Extract room type
-    room_match = re.search(r'(?:room|accommodation):\s*(.+?)(?:\n|$)', email_body, re.IGNORECASE)
+    room_match = re.search(r'(?:room|accommodation):\s*(.+?)(?:\n|$)', cleaned_email, re.IGNORECASE)
     if room_match:
         reservation_info['room_type'] = room_match.group(1).strip()
     
@@ -243,18 +275,26 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
 
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Starting to parse Greek reservation request")
-    logging.info("Email content:")   
+    logging.info("Original email content:")
+    logging.info(email_body)
+    
+    # Clean the email body
+    cleaned_email = clean_email_body(email_body)
+    logging.info("Cleaned email content:")
+    logging.info(cleaned_email)
+    
     parsing_functions = [parse_format_1, parse_format_2, parse_format_3]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.debug(f"Attempting to parse with format {i}")
-        result = func(email_body)
+        result = func(cleaned_email)
         if result:
             logging.info(f"Successfully parsed using format {i}")
             return result
     
     logging.warning("Failed to parse the email with any known format")
     return {'adults': 2, 'children': 0, 'room_type': 'δωμάτιο'}
+
 
 #################################################################dds
 
