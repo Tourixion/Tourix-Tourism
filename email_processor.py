@@ -19,6 +19,11 @@ import traceback
 import logging
 from typing import List, Dict, Any
 import unicodedata
+import spacy
+from spacy.matcher import Matcher
+from datetime import datetime, timedelta
+import re
+from transliterate import translit
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -41,27 +46,6 @@ month_mapping = {
     'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
 }
 
-def get_staff_email():
-    return os.environ['STAFF_EMAIL']
-import spacy
-from spacy.matcher import Matcher
-from datetime import datetime, timedelta
-import re
-from transliterate import translit
-import logging
-import imaplib
-import email
-from email.header import decode_header
-import os
-import requests
-from bs4 import BeautifulSoup
-import socket
-import ssl
-import sys
-import time
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import traceback
-from typing import List, Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
