@@ -17,7 +17,7 @@ import time
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import traceback
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import unicodedata
 import spacy
 from spacy.matcher import Matcher
