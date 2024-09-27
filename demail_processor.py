@@ -39,18 +39,20 @@ def detect_language(text: str) -> str:
     return 'el' if lang == 'el' else 'en'
 
 def clean_email_body(email_body: str) -> str:
-    """Remove forwarded message headers and other email-specific formatting."""
-    # Remove forwarded message header
-    email_body = re.sub(r'---------- Forwarded message ---------.*?(?=\n\n)', '', email_body, flags=re.DOTALL)
+    """Remove forwarded message headers and unnecessary email formatting without breaking important content."""
     
-    # Remove email headers (From:, Date:, Subject:, To:)
+    # Remove forwarded message header (preserve content after the header)
+    email_body = re.sub(r'---------- Forwarded message ---------\n.*?\n\n', '', email_body, flags=re.DOTALL)
+    
+    # Remove common email headers (From:, Date:, Subject:, To:) at the beginning of the email
     email_body = re.sub(r'^(From|Date|Subject|To):.*$', '', email_body, flags=re.MULTILINE)
     
-    # Remove any remaining lines that look like email headers
-    email_body = re.sub(r'^[^:]+:.*$', '', email_body, flags=re.MULTILINE)
+    # Remove only actual email-like headers (avoid stripping valid content with colons)
+    # We add a stricter pattern to avoid removing lines that aren't headers
+    email_body = re.sub(r'^[A-Za-z-]+:\s.*$', '', email_body, flags=re.MULTILINE)
     
-    # Remove empty lines
-    email_body = re.sub(r'\n\s*\n', '\n', email_body)
+    # Limit removal of multiple empty lines (keep 1 line break between paragraphs)
+    email_body = re.sub(r'\n\s*\n', '\n\n', email_body)
     
     # Strip leading and trailing whitespace
     email_body = email_body.strip()
