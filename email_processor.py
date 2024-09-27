@@ -398,7 +398,7 @@ def send_email_with_original(to_address: str, subject: str, body: str, original_
         logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool) -> None:
+def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool, original_email) -> None:
     if is_greek_email:
         subject = f"Νέο Αίτημα Κράτησης (Μερικές Πληροφορίες) - {customer_email}"
         body = f"""
@@ -426,7 +426,7 @@ def send_partial_info_response(staff_email: str, customer_email: str, reservatio
         Please process this request manually and contact the customer as soon as possible.
         """
     
-    send_email(staff_email, subject, body)
+    send_email_with_original(staff_email, subject, body, original_email)
 
 def send_error_notification(email_body: str, reservation_info: Dict[str, Any], original_email) -> None:
     staff_email = get_staff_email()
