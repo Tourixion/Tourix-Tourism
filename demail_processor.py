@@ -277,7 +277,7 @@ def parse_english_request(email_body: str) -> Dict[str, Any]:
     logging.info(cleaned_email)
     
     # List of parsing functions for different English email formats
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4]
+    parsing_functions = [parse_format_eng_1, parse_format_eng_2, parse_format_eng_3, parse_format_eng_4]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.debug(f"Attempting to parse with format {i}")
