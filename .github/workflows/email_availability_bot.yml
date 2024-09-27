@@ -33,4 +33,4 @@ jobs:
         IMAP_SERVER: ${{ secrets.IMAP_SERVER }}
         IMAP_PORT: ${{ secrets.IMAP_PORT }}
         EXCHANGERATE_API_KEY: ${{ secrets.EXCHANGERATE_API_KEY }}
-      run: python email_processor.py
+      run: python demail_processor.py
