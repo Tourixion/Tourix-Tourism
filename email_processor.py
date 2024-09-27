@@ -81,86 +81,124 @@ def get_email_content(msg):
 
 def parse_reservation_request(email_body):
     email_body = email_body.lower()
+    reservation_info = {}
+
+    # Define patterns for various information
     patterns = {
-        'check_in': r'(?:check[ -]?in|arrival|from|άφιξη|από)[\s:]+(.+?)(?:\n|$)',
-        'check_out': r'(?:check[ -]?out|departure|to|until|till|αναχώρηση|μέχρι)[\s:]+(.+?)(?:\n|$)',
-        'adults': r'(?:adults?|persons?|people|guests?|ενήλικες|άτομα)[\s:]+(\d+)',
-        'children': r'(?:children|kids|παιδιά)[\s:]+(\d+)',
-        'room_type': r'(?:room|accommodation|δωμάτιο|κατάλυμα)[\s:]+(.+?)(?:\n|$)'
+        'check_in': [
+            r'(?:check[ -]?in|arrival|from|άφιξη|από)[\s:]+(.+?)(?:\n|$)',
+            r'(?:από|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:έως|μέχρι|to|till)',
+        ],
+        'check_out': [
+            r'(?:check[ -]?out|departure|to|until|till|αναχώρηση|μέχρι)[\s:]+(.+?)(?:\n|$)',
+            r'(?:έως|μέχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+        ],
+        'adults': [
+            r'(?:adults?|persons?|people|guests?|ενήλικες|άτομα)[\s:]+(\d+)',
+            r'(\d+)\s+(?:adults?|persons?|people|guests?|ενήλικες|άτομα)',
+        ],
+        'children': [
+            r'(?:children|kids|παιδιά)[\s:]+(\d+)',
+            r'(\d+)\s+(?:children|kids|παιδιά)',
+        ],
+        'room_type': [
+            r'(?:room|accommodation|δωμάτιο|κατάλυμα)[\s:]+(.+?)(?:\n|$)',
+        ],
     }
 
-    reservation_info = {}
-    for key, pattern in patterns.items():
+    # Try to match each pattern
+    for key, pattern_list in patterns.items():
+        for pattern in pattern_list:
+            match = re.search(pattern, email_body)
+            if match:
+                reservation_info[key] = match.group(1).strip()
+                break
+
+    # Special handling for date range
+    date_range_patterns = [
+        r'(για|for)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:εως|έως|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+        r'(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:εως|έως|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+    ]
+    for pattern in date_range_patterns:
         match = re.search(pattern, email_body)
         if match:
-            reservation_info[key] = match.group(1).strip()
+            reservation_info['check_in'] = match.group(-2)
+            reservation_info['check_out'] = match.group(-1)
+            break
 
+    # Parse dates
     for date_key in ['check_in', 'check_out']:
         if date_key in reservation_info:
             try:
                 reservation_info[date_key] = parse_custom_date(reservation_info[date_key])
-            except ValueError:
+            except ValueError as e:
+                logging.warning(f"Failed to parse {date_key} date: {str(e)}")
                 del reservation_info[date_key]
-    
+
+    # Set check_out to next day if only check_in is provided
     if 'check_in' in reservation_info and 'check_out' not in reservation_info:
         reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
-    
+
+    # Convert adults and children to integers
     for num_key in ['adults', 'children']:
         if num_key in reservation_info:
-            reservation_info[num_key] = int(reservation_info[num_key])
-    
+            try:
+                reservation_info[num_key] = int(reservation_info[num_key])
+            except ValueError:
+                logging.warning(f"Failed to parse {num_key} as integer")
+                del reservation_info[num_key]
+
+    # Set default adults if not specified
     if 'adults' not in reservation_info:
         reservation_info['adults'] = 2
-    
+
     return reservation_info
 
 def parse_custom_date(date_string):
-    # First, try to parse DD/MM or DD/MM/YYYY format
-    match = re.match(r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?', date_string)
-    if match:
-        day = int(match.group(1))
-        month = int(match.group(2))
-        year = int(match.group(3)) if match.group(3) else datetime.now().year
-        if len(str(year)) == 2:
-            year += 2000  # Assume 20xx for two-digit years
-        return datetime(year, month, day).date()
+    # Try to parse various date formats
+    date_formats = [
+        r'(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?',  # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+        r'(\d{1,2})\s+([α-ωa-z]+)(?:\s+(\d{2,4}))?',    # DD Month YYYY
+        r'([α-ωa-z]+)\s+(\d{1,2})(?:,?\s+(\d{2,4}))?',  # Month DD, YYYY
+    ]
 
-    # If DD/MM format doesn't match, proceed with existing logic
-    match = re.match(r'(\d{1,2})\s*([a-zα-ω]+)', date_string)
-    if match:
-        day = int(match.group(1))
-        month_str = match.group(2)
-        if month_str in month_mapping:
-            month = month_mapping[month_str]
-            year = datetime.now().year
-            return datetime(year, month, day).date()
+    for date_format in date_formats:
+        match = re.search(date_format, date_string, re.IGNORECASE)
+        if match:
+            day, month, year = match.groups()
+            
+            # Handle month names
+            if month.isalpha():
+                month = month.lower()
+                if month in month_mapping:
+                    month = month_mapping[month]
+                else:
+                    raise ValueError(f"Unknown month: {month}")
+            
+            # Convert to integers
+            day = int(day)
+            month = int(month)
+            year = int(year) if year else datetime.now().year
 
-    components = re.findall(r'\b\w+\b', date_string)
-    day = month = year = None
-    
-    for comp in components:
-        if comp.isdigit():
-            if len(comp) == 4:
-                year = int(comp)
-            elif int(comp) <= 31:
-                day = int(comp)
-        elif comp in month_mapping:
-            month = month_mapping[comp]
-    
-    if year is None:
-        year = datetime.now().year
-        if month and day:
-            if datetime(year, month, day) < datetime.now():
-                year += 1
-    
-    if day and month and year:
-        return datetime(year, month, day).date()
-    else:
+            # Handle two-digit years
+            if len(str(year)) == 2:
+                year += 2000 if year < 50 else 1900
+
+            # Validate date
+            try:
+                return datetime(year, month, day).date()
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {date_string}. Error: {str(e)}")
+
+    # If no format matches, try dateutil parser as a fallback
+    try:
         return date_parser.parse(date_string, fuzzy=True).date()
+    except ValueError:
+        raise ValueError(f"Unable to parse date: {date_string}")
 
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
-
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
     base_url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
