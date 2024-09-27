@@ -201,9 +201,8 @@ def parse_format_eng_3(email_body: str) -> Optional[Dict[str, Any]]:
                 except ValueError as e:
                     logging.error(f"Error parsing check-out date: {str(e)}")
 
-    def parse_format_eng_4(email_body: str) -> Optional[Dict[str, Any]]:
-    """
-    Parse format: '9nov 24' or '12 nov 24'
+def parse_format_eng_4(email_body: str) -> Optional[Dict[str, Any]]:
+    """Parse format: '9nov 24' or '12 nov 24'
     Handles dates where month and year are concatenated, and month names are abbreviated.
     """
     logging.info("Parsing email content (Format 4):")
