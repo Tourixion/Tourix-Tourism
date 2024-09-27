@@ -182,14 +182,14 @@ def parse_dates(reservation_info):
     return reservation_info
 
 def calculate_checkout(reservation_info):
-    if 'check_in' in reservation_info and 'check_out' not in reservation_info:
+    if 'check_in' in reservation_info:
         if 'nights' in reservation_info:
             try:
                 nights = int(reservation_info['nights'])
                 reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=nights)
             except ValueError:
                 logging.warning("Failed to calculate check-out date based on nights")
-        else:
+        elif 'check_out' not in reservation_info:
             reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
     return reservation_info
 
@@ -206,15 +206,14 @@ def parse_numeric_fields(reservation_info):
         reservation_info['adults'] = 2
     return reservation_info
 
-
 def parse_reservation_request(email_body):
     email_body = strip_accents(email_body.lower())
     patterns = get_patterns()
     
     reservation_info = extract_info(email_body, patterns)
+    reservation_info = parse_numeric_fields(reservation_info)  # Parse numeric fields first
     reservation_info = parse_dates(reservation_info)
     reservation_info = calculate_checkout(reservation_info)
-    reservation_info = parse_numeric_fields(reservation_info)
     
     return reservation_info
     
