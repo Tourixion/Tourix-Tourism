@@ -106,43 +106,6 @@ def get_patterns():
             r'(?:room|accommodation|δωμάτιο|κατάλυμα|loft)[\s:]+(.+?)(?:\n|$)',
         ],
     }
-def process_email(email_msg, sender_address: str) -> None:
-    logging.info("Starting to process email")
-    email_body = get_email_content(email_msg)
-    is_greek_email = is_greek(email_body)
-    logging.info(f"Email language: {'Greek' if is_greek_email else 'English'}")
-    
-    reservation_info = parse_reservation_request(email_body)
-    logging.info(f"Parsed reservation info: {reservation_info}")
-    
-    # ... rest of your process_email function ...
-
-This modular approach should make your code more maintainable and easier to update in the future. It also allows for easier unit testing of individual components if you decide to add tests later.
-
-Is there anything you'd like me to explain further or modify in this modular approach?
-Claude can make mistakes. Please double-check responses.
-
-
-Tip:
-Long chats cause you to reach your usage limits faster.
-Modular Reservation Parsing Functions
-import re
-from datetime import datetime, timedelta
-from dateutil import parser as date_parser
-import logging
-
-# Define month_mapping at the module level
-month_mapping = {
-    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
-    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'june': 6,
-    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
-    'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'μαι': 5, 'ιουν': 6,
-    'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
-    'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5,
-    'ιούνιος': 6, 'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9,
-    'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
-}
 
 def get_patterns():
     return {
