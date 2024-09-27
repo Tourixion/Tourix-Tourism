@@ -139,23 +139,23 @@ def parse_reservation_request(email_body):
         return date_parser.parse(date_string, fuzzy=True).date()
 
 # The rest of your code remains the same
-for date_key in ['check_in', 'check_out']:
-    if date_key in reservation_info:
-        try:
-            reservation_info[date_key] = parse_custom_date(reservation_info[date_key])
-        except ValueError:
-            del reservation_info[date_key]
-if 'check_in' in reservation_info and 'check_out' not in reservation_info:
-    reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
-for num_key in ['adults', 'children']:
-    if num_key in reservation_info:
+    for date_key in ['check_in', 'check_out']:
+        if date_key in reservation_info:
+            try:
+                reservation_info[date_key] = parse_custom_date(reservation_info[date_key])
+            except ValueError:
+                del reservation_info[date_key]
+    if 'check_in' in reservation_info and 'check_out' not in reservation_info:
+        reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
+    for num_key in ['adults', 'children']:
+        if num_key in reservation_info:
         reservation_info[num_key] = int(reservation_info[num_key])
-if 'adults' not in reservation_info:
-    reservation_info['adults'] = 2
-return reservation_info
+    if 'adults' not in reservation_info:
+        reservation_info['adults'] = 2
+    return reservation_info
 
-def is_greek(text):
-    return bool(re.search(r'[\u0370-\u03FF]', text))
+    def is_greek(text):
+        return bool(re.search(r'[\u0370-\u03FF]', text))
 
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
