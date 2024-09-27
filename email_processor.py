@@ -23,7 +23,7 @@ import spacy
 from spacy.matcher import Matcher
 from datetime import datetime, timedelta
 import re
-from transliterate import translit
+from transliterate import translit, detect_language
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -31,144 +31,79 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def strip_accents(text):
     return ''.join(char for char in unicodedata.normalize('NFKD', text) if unicodedata.category(char) != 'Mn')
 
-month_mapping = {
-    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
-    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'june': 6,
-    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
-    'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
-    'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
-    'ιανουαριος': 1, 'φεβρουαριος': 2, 'μαρτιος': 3, 'απριλιος': 4, 'μαιος': 5,
-    'ιουνιος': 6, 'ιουλιος': 7, 'αυγουστος': 8, 'σεπτεμβριος': 9,
-    'οκτωβριος': 10, 'νοεμβριος': 11, 'δεκεμβριος': 12,
-    'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5,
-    'ιουνιου': 6, 'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9,
-    'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
-}
+def normalize_text(text: str) -> str:
+    """Normalize text by removing accents and converting to lowercase."""
+    return ''.join(c for c in unicodedata.normalize('NFD', text.lower())
+                   if unicodedata.category(c) != 'Mn')
 
+def detect_language(text: str) -> str:
+    """Detect if the text is Greek or English."""
+    lang = detect_language(text)
+    return 'el' if lang == 'el' else 'en'
 
+def transliterate_if_greek(text: str) -> str:
+    """Transliterate text if it's in Greek."""
+    lang = detect_language(text)
+    return translit(text, 'el', reversed=True) if lang == 'el' else text
 
+def extract_dates(text: str) -> Dict[str, Any]:
+    """Extract dates from the text."""
+    dates = re.findall(r'(\d{1,2})\s*(?:of|)\s*([a-zA-Z]+)', text)
+    result = {}
+    if len(dates) >= 1:
+        result['check_in'] = f"{dates[0][0]} {dates[0][1]}"
+    if len(dates) >= 2:
+        result['check_out'] = f"{dates[1][0]} {dates[1][1]}"
+    return result
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+def extract_numbers(text: str) -> Dict[str, int]:
+    """Extract numeric information from the text."""
+    numbers = re.findall(r'(\d+)\s*(?:adults?|persons?|people|guests?|children|kids|nights?|rooms?)', text)
+    result = {}
+    if numbers:
+        result['adults'] = int(numbers[0])
+    if len(numbers) > 1:
+        result['children'] = int(numbers[1])
+    if len(numbers) > 2:
+        result['nights'] = int(numbers[2])
+    return result
 
-# Load spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-    logging.info("Loaded en_core_web_sm model successfully")
-except:
-    logging.error("Failed to load en_core_web_sm model. Make sure it's installed.")
-    raise
-
-def transliterate_greek(text):
-    return translit(text, 'el', reversed=True)
-
-# Define patterns for matcher
-matcher = Matcher(nlp.vocab)
-
-# Date patterns
-matcher.add("DATE", [
-    [{"LIKE_NUM": True}, {"LOWER": {"IN": ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]}}],
-    [{"LIKE_NUM": True}, {"LOWER": {"IN": ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]}}],
-    [{"LIKE_NUM": True}, {"LOWER": "/"}, {"LIKE_NUM": True}]
-])
-
-# Number of nights pattern
-matcher.add("NIGHTS", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["nights", "night"]}}]])
-
-# Number of adults pattern
-matcher.add("ADULTS", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["adults", "adult", "people", "persons", "guests"]}}]])
-
-# Number of children pattern
-matcher.add("CHILDREN", [[{"LIKE_NUM": True}, {"LOWER": {"IN": ["children", "child", "kids", "kid"]}}]])
-
-def parse_reservation_request(email_body):
+def parse_reservation_request(email_body: str) -> Dict[str, Any]:
     logging.info(f"Parsing reservation request")
     
-    # Transliterate and process
-    email_body = transliterate_greek(email_body.lower())
-    doc = nlp(email_body)
+    # Normalize and transliterate if necessary
+    normalized_text = normalize_text(email_body)
+    transliterated_text = transliterate_if_greek(normalized_text)
+    
+    logging.info(f"Normalized and transliterated text: {transliterated_text}")
 
-    matches = matcher(doc)
-
+    # Extract information
     reservation_info = {}
+    reservation_info.update(extract_dates(transliterated_text))
+    reservation_info.update(extract_numbers(transliterated_text))
 
-    for match_id, start, end in matches:
-        span = doc[start:end]
-        label = nlp.vocab.strings[match_id]
+    # Set default values if not found
+    if 'adults' not in reservation_info:
+        reservation_info['adults'] = 2
+        logging.info("Set default number of adults to 2")
 
-        if label == "DATE":
-            if "check_in" not in reservation_info:
-                reservation_info["check_in"] = span.text
-                logging.info(f"Extracted check-in date: {span.text}")
-            elif "check_out" not in reservation_info:
-                reservation_info["check_out"] = span.text
-                logging.info(f"Extracted check-out date: {span.text}")
-        elif label == "NIGHTS":
-            reservation_info["nights"] = span[0].text
-            logging.info(f"Extracted number of nights: {span[0].text}")
-        elif label == "ADULTS":
-            reservation_info["adults"] = span[0].text if span[0].like_num else span[1].text
-            logging.info(f"Extracted number of adults: {reservation_info['adults']}")
-        elif label == "CHILDREN":
-            reservation_info["children"] = span[0].text if span[0].like_num else span[1].text
-            logging.info(f"Extracted number of children: {reservation_info['children']}")
-        elif label == "ROOMS":
-            reservation_info["rooms"] = span[0].text
-            logging.info(f"Extracted number of rooms: {reservation_info['rooms']}")
-
-    # Handle specific Greek phrases
-    if "apo" in email_body and "eos" in email_body:
-        dates = re.findall(r"apo (\d{1,2} \w+) eos (\d{1,2} \w+)", email_body)
-        if dates:
-            reservation_info["check_in"] = dates[0][0]
-            reservation_info["check_out"] = dates[0][1]
-            logging.info(f"Extracted check-in date: {dates[0][0]}")
-            logging.info(f"Extracted check-out date: {dates[0][1]}")
-
-    # Convert dates to datetime objects
-    for date_key in ["check_in", "check_out"]:
+    # Parse dates
+    for date_key in ['check_in', 'check_out']:
         if date_key in reservation_info:
             try:
-                reservation_info[date_key] = parse_date(reservation_info[date_key])
+                reservation_info[date_key] = datetime.strptime(reservation_info[date_key], "%d %B").date()
                 logging.info(f"Parsed {date_key}: {reservation_info[date_key]}")
             except ValueError as e:
                 logging.error(f"Failed to parse {date_key}: {str(e)}")
                 del reservation_info[date_key]
 
     # Calculate check-out date if not provided
-    if "check_in" in reservation_info and "check_out" not in reservation_info and "nights" in reservation_info:
-        nights = int(reservation_info["nights"])
-        reservation_info["check_out"] = reservation_info["check_in"] + timedelta(days=nights)
+    if 'check_in' in reservation_info and 'check_out' not in reservation_info and 'nights' in reservation_info:
+        reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=reservation_info['nights'])
         logging.info(f"Calculated check-out date: {reservation_info['check_out']}")
-
-    # Set default adults if not specified
-    if "adults" not in reservation_info:
-        reservation_info["adults"] = 2
-        logging.info("Set default number of adults to 2")
 
     logging.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
-
-def parse_date(date_string):
-    months = {
-        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
-        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
-        'ianouariou': 1, 'fevrouariou': 2, 'martiou': 3, 'apriliou': 4, 'maiou': 5, 'iouniou': 6,
-        'iouliou': 7, 'augoustou': 8, 'septemvriou': 9, 'oktovriou': 10, 'noemvriou': 11, 'dekemvriou': 12
-    }
-    
-    parts = date_string.split()
-    if len(parts) >= 2:
-        day = int(parts[0])
-        month = months.get(parts[1].lower())
-        year = datetime.now().year
-        if len(parts) == 3 and parts[2].isdigit():
-            year = int(parts[2])
-        if month:
-            return datetime(year, month, day).date()
-    
-    raise ValueError(f"Unable to parse date: {date_string}")
     
 def get_staff_email():
     return os.environ['STAFF_EMAIL']
