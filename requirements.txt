@@ -3,3 +3,6 @@ requests==2.26.0
 beautifulsoup4==4.10.0
 playwright==1.30.0
 forex-python==1.8
+spacy==3.5.3
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl
+transliterate==1.10.2
