@@ -151,27 +151,25 @@ def parse_reservation_request(email_body):
     return reservation_info
 
 def parse_date(date_string):
-    date_formats = [
-        "%d %B",  # 15 October
-        "%d %b",  # 15 Oct
-        "%d/%m",  # 15/10
-        "%d-%m",  # 15-10
-        "%B %d",  # October 15
-        "%b %d",  # Oct 15
-    ]
+    months = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+        'ianouariou': 1, 'fevrouariou': 2, 'martiou': 3, 'apriliou': 4, 'maiou': 5, 'iouniou': 6,
+        'iouliou': 7, 'augoustou': 8, 'septemvriou': 9, 'oktovriou': 10, 'noemvriou': 11, 'dekemvriou': 12
+    }
     
-    for date_format in date_formats:
-        try:
-            date = datetime.strptime(date_string, date_format).replace(year=datetime.now().year).date()
-            # If the parsed date is in the past, assume it's for next year
-            if date < datetime.now().date():
-                date = date.replace(year=date.year + 1)
-            return date
-        except ValueError:
-            continue
+    parts = date_string.split()
+    if len(parts) >= 2:
+        day = int(parts[0])
+        month = months.get(parts[1].lower())
+        year = datetime.now().year
+        if len(parts) == 3 and parts[2].isdigit():
+            year = int(parts[2])
+        if month:
+            return datetime(year, month, day).date()
     
     raise ValueError(f"Unable to parse date: {date_string}")
-# Existing functions (keep these as they were)
+    
 def get_staff_email():
     return os.environ['STAFF_EMAIL']
 
