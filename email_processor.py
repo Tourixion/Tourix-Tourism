@@ -79,20 +79,20 @@ def get_email_content(msg):
     else:
         return msg.get_payload(decode=True).decode()
 
-def parse_reservation_request(email_body):
-    email_body = email_body.lower()
-    reservation_info = {}
-
-    # Define patterns for various information
-    patterns = {
+def get_patterns():
+    return {
         'check_in': [
             r'(?:check[ -]?in|arrival|from|άφιξη|από)[\s:]+(.+?)(?:\n|$)',
             r'(?:από|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-            r'(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:έως|μέχρι|to|till)',
+            r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
         ],
         'check_out': [
             r'(?:check[ -]?out|departure|to|until|till|αναχώρηση|μέχρι)[\s:]+(.+?)(?:\n|$)',
             r'(?:έως|μέχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'check\s*out\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
+        ],
+        'nights': [
+            r'(\d+)\s*(?:nights?|νύχτες?|βράδια)',
         ],
         'adults': [
             r'(?:adults?|persons?|people|guests?|ενήλικες|άτομα)[\s:]+(\d+)',
@@ -103,33 +103,133 @@ def parse_reservation_request(email_body):
             r'(\d+)\s+(?:children|kids|παιδιά)',
         ],
         'room_type': [
-            r'(?:room|accommodation|δωμάτιο|κατάλυμα)[\s:]+(.+?)(?:\n|$)',
+            r'(?:room|accommodation|δωμάτιο|κατάλυμα|loft)[\s:]+(.+?)(?:\n|$)',
+        ],
+    }
+def process_email(email_msg, sender_address: str) -> None:
+    logging.info("Starting to process email")
+    email_body = get_email_content(email_msg)
+    is_greek_email = is_greek(email_body)
+    logging.info(f"Email language: {'Greek' if is_greek_email else 'English'}")
+    
+    reservation_info = parse_reservation_request(email_body)
+    logging.info(f"Parsed reservation info: {reservation_info}")
+    
+    # ... rest of your process_email function ...
+
+This modular approach should make your code more maintainable and easier to update in the future. It also allows for easier unit testing of individual components if you decide to add tests later.
+
+Is there anything you'd like me to explain further or modify in this modular approach?
+Claude can make mistakes. Please double-check responses.
+
+
+Tip:
+Long chats cause you to reach your usage limits faster.
+Modular Reservation Parsing Functions
+import re
+from datetime import datetime, timedelta
+from dateutil import parser as date_parser
+import logging
+
+# Define month_mapping at the module level
+month_mapping = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'june': 6,
+    'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'μαι': 5, 'ιουν': 6,
+    'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
+    'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5,
+    'ιούνιος': 6, 'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9,
+    'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
+}
+
+def get_patterns():
+    return {
+        'check_in': [
+            r'(?:check[ -]?in|arrival|from|άφιξη|από)[\s:]+(.+?)(?:\n|$)',
+            r'(?:από|from)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'check\s*in\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
+        ],
+        'check_out': [
+            r'(?:check[ -]?out|departure|to|until|till|αναχώρηση|μέχρι)[\s:]+(.+?)(?:\n|$)',
+            r'(?:έως|μέχρι|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+            r'check\s*out\s*(\d{1,2}\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(?:\d{2,4})?)',
+        ],
+        'nights': [
+            r'(\d+)\s*(?:nights?|νύχτες?|βράδια)',
+        ],
+        'adults': [
+            r'(?:adults?|persons?|people|guests?|ενήλικες|άτομα)[\s:]+(\d+)',
+            r'(\d+)\s+(?:adults?|persons?|people|guests?|ενήλικες|άτομα)',
+        ],
+        'children': [
+            r'(?:children|kids|παιδιά)[\s:]+(\d+)',
+            r'(\d+)\s+(?:children|kids|παιδιά)',
+        ],
+        'room_type': [
+            r'(?:room|accommodation|δωμάτιο|κατάλυμα|loft)[\s:]+(.+?)(?:\n|$)',
         ],
     }
 
-    # Try to match each pattern
+def extract_info(email_body, patterns):
+    reservation_info = {}
     for key, pattern_list in patterns.items():
         for pattern in pattern_list:
             match = re.search(pattern, email_body)
             if match:
                 reservation_info[key] = match.group(1).strip()
                 break
+    return reservation_info
 
-    # Special handling for date range
-    date_range_patterns = [
-        r'(για|for)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:εως|έως|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
-        r'(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)\s+(?:εως|έως|to|till)\s+(\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?)',
+
+def parse_custom_date(date_string):
+    date_string = date_string.lower().strip()
+    
+    date_formats = [
+        r'(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?',  # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+        r'(\d{1,2})\s*([a-z]+)(?:\s*(\d{2,4}))?',    # DD Month YYYY
+        r'([a-z]+)\s*(\d{1,2})(?:,?\s*(\d{2,4}))?',  # Month DD, YYYY
+        r'([a-z]+)\s*(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{2,4}))?',  # Month DDst/nd/rd/th, YYYY
     ]
-    for pattern in date_range_patterns:
-        match = re.search(pattern, email_body)
+
+    for date_format in date_formats:
+        match = re.search(date_format, date_string, re.IGNORECASE)
         if match:
             groups = match.groups()
-            if len(groups) >= 2:
-                reservation_info['check_in'] = groups[-2]
-                reservation_info['check_out'] = groups[-1]
-            break
+            
+            if groups[0].isalpha():
+                month, day, year = groups
+            elif groups[1].isalpha():
+                day, month, year = groups
+            else:
+                day, month, year = groups
+            
+            if isinstance(month, str) and month.isalpha():
+                month = month[:3]
+                if month in month_mapping:
+                    month = month_mapping[month]
+                else:
+                    raise ValueError(f"Unknown month: {month}")
+            
+            day = int(day)
+            month = int(month)
+            year = int(year) if year else datetime.now().year
 
-    # Parse dates
+            if year and len(str(year)) == 2:
+                year += 2000 if year < 50 else 1900
+
+            try:
+                return datetime(year, month, day).date()
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {date_string}. Error: {str(e)}")
+
+    try:
+        return date_parser.parse(date_string, fuzzy=True).date()
+    except ValueError:
+        raise ValueError(f"Unable to parse date: {date_string}")
+
+def parse_dates(reservation_info):
     for date_key in ['check_in', 'check_out']:
         if date_key in reservation_info:
             try:
@@ -137,12 +237,21 @@ def parse_reservation_request(email_body):
             except ValueError as e:
                 logging.warning(f"Failed to parse {date_key} date: {str(e)}")
                 del reservation_info[date_key]
+    return reservation_info
 
-    # Set check_out to next day if only check_in is provided
+def calculate_checkout(reservation_info):
     if 'check_in' in reservation_info and 'check_out' not in reservation_info:
-        reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
+        if 'nights' in reservation_info:
+            try:
+                nights = int(reservation_info['nights'])
+                reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=nights)
+            except ValueError:
+                logging.warning("Failed to calculate check-out date based on nights")
+        else:
+            reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=1)
+    return reservation_info
 
-    # Convert adults and children to integers
+def parse_numeric_fields(reservation_info):
     for num_key in ['adults', 'children']:
         if num_key in reservation_info:
             try:
@@ -150,54 +259,22 @@ def parse_reservation_request(email_body):
             except ValueError:
                 logging.warning(f"Failed to parse {num_key} as integer")
                 del reservation_info[num_key]
-
-    # Set default adults if not specified
+    
     if 'adults' not in reservation_info:
         reservation_info['adults'] = 2
-
     return reservation_info
 
-def parse_custom_date(date_string):
-    # Try to parse various date formats
-    date_formats = [
-        r'(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?',  # DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
-        r'(\d{1,2})\s+([α-ωa-z]+)(?:\s+(\d{2,4}))?',    # DD Month YYYY
-        r'([α-ωa-z]+)\s+(\d{1,2})(?:,?\s+(\d{2,4}))?',  # Month DD, YYYY
-    ]
 
-    for date_format in date_formats:
-        match = re.search(date_format, date_string, re.IGNORECASE)
-        if match:
-            day, month, year = match.groups()
-            
-            # Handle month names
-            if month.isalpha():
-                month = month.lower()
-                if month in month_mapping:
-                    month = month_mapping[month]
-                else:
-                    raise ValueError(f"Unknown month: {month}")
-            
-            # Convert to integers
-            day = int(day)
-            month = int(month)
-            year = int(year) if year else datetime.now().year
-
-            # Handle two-digit years
-            if len(str(year)) == 2:
-                year += 2000 if year < 50 else 1900
-
-            # Validate date
-            try:
-                return datetime(year, month, day).date()
-            except ValueError as e:
-                raise ValueError(f"Invalid date: {date_string}. Error: {str(e)}")
-
-    # If no format matches, try dateutil parser as a fallback
-    try:
-        return date_parser.parse(date_string, fuzzy=True).date()
-    except ValueError:
-        raise ValueError(f"Unable to parse date: {date_string}")
+def parse_reservation_request(email_body):
+    email_body = email_body.lower()
+    patterns = get_patterns()
+    
+    reservation_info = extract_info(email_body, patterns)
+    reservation_info = parse_dates(reservation_info)
+    reservation_info = calculate_checkout(reservation_info)
+    reservation_info = parse_numeric_fields(reservation_info)
+    
+    return reservation_info
 
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
