@@ -338,7 +338,62 @@ def parse_format_3(email_body: str) -> Optional[Dict[str, Any]]:
         logging.warning("Failed to extract all necessary information")
         return None
 
+def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Greek reservation requests in the format:
+    [room type] [start date] εως [end date]
+    Example: "ενα διαμερισμα 13 νοεμ εως 18 νοεμ"
+    """
+    logging.info("Parsing email content (Format 4):")
+    logging.info(email_body)
+    
+    # Greek month abbreviations to numbers
+    greek_months = {
+        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
+    }
+    
+    # Regular expression pattern for the new format
+    pattern = r'([\wά-ώ]+(?:\s+[\wά-ώ]+)?)\s+(\d{1,2})\s+([\wά-ώ]{3})\s+(?:εως|έως|μεχρι|μέχρι)\s+(\d{1,2})\s+([\wά-ώ]{3})'
+    match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
+    
+    if match:
+        room_type, start_day, start_month, end_day, end_month = match.groups()
+        
+        try:
+            # Convert Greek month abbreviations to numbers
+            start_month_num = greek_months[start_month.lower()]
+            end_month_num = greek_months[end_month.lower()]
+            
+            # Create date objects
+            current_year = datetime.now().year
+            start_date = datetime(current_year, start_month_num, int(start_day)).date()
+            end_date = datetime(current_year, end_month_num, int(end_day)).date()
+            
+            # If end date is before start date, it might be in the next year
+            if end_date < start_date:
+                end_date = datetime(current_year + 1, end_month_num, int(end_day)).date()
+            
+            # Calculate number of nights
+            nights = (end_date - start_date).days
+            
+            return {
+                'room_type': room_type.strip().lower(),
+                'check_in': start_date,
+                'check_out': end_date,
+                'nights': nights,
+                'adults': 2  # Default to 2 adults if not specified
+            }
+        except (ValueError, KeyError) as e:
+            logging.error(f"Error parsing dates in format 4: {str(e)}")
+    
+    return None
+
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
+    """
+    Main function to parse Greek reservation requests.
+    Combines existing parsing methods with the new format 4 parsing.
+    """
     logging.info("Starting to parse Greek reservation request")
     logging.info("Original email content:")
     logging.info(email_body)
@@ -348,7 +403,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.debug(f"Attempting to parse with format {i}")
