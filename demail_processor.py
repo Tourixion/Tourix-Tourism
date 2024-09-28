@@ -350,42 +350,59 @@ def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
     # Greek month abbreviations to numbers
     greek_months = {
         'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
-        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
+        'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5,
+        'ιουνιου': 6, 'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9,
+        'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
     }
     
     # Regular expression pattern for the new format
-    pattern = r'([\wά-ώ]+(?:\s+[\wά-ώ]+)?)\s+(\d{1,2})\s+([\wά-ώ]{3})\s+(?:εως|έως|μεχρι|μέχρι)\s+(\d{1,2})\s+([\wά-ώ]{3})'
+    pattern = r'([\wά-ώ]+(?:\s+[\wά-ώ]+)?)\s+(\d{1,2})?\s*([\wά-ώ]{3,10})\s+(?:εως|έως|μεχρι|μέχρι)\s+(\d{1,2})?\s*([\wά-ώ]{3,10})'
     match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
     
     if match:
+        logging.info(f"Matched pattern: {match.group()}")
         room_type, start_day, start_month, end_day, end_month = match.groups()
+        logging.info(f"Parsed groups: room_type={room_type}, start_day={start_day}, start_month={start_month}, end_day={end_day}, end_month={end_month}")
         
         try:
-            # Convert Greek month abbreviations to numbers
-            start_month_num = greek_months[start_month.lower()]
-            end_month_num = greek_months[end_month.lower()]
+            # Convert Greek month names to numbers
+            start_month_num = greek_months.get(start_month.lower())
+            end_month_num = greek_months.get(end_month.lower())
+            
+            if not start_month_num or not end_month_num:
+                logging.error(f"Failed to parse month: start_month={start_month}, end_month={end_month}")
+                return None
+            
+            # If day is not provided, default to 1
+            start_day = int(start_day) if start_day else 1
+            end_day = int(end_day) if end_day else 1
             
             # Create date objects
             current_year = datetime.now().year
-            start_date = datetime(current_year, start_month_num, int(start_day)).date()
-            end_date = datetime(current_year, end_month_num, int(end_day)).date()
+            start_date = datetime(current_year, start_month_num, start_day).date()
+            end_date = datetime(current_year, end_month_num, end_day).date()
             
             # If end date is before start date, it might be in the next year
             if end_date < start_date:
-                end_date = datetime(current_year + 1, end_month_num, int(end_day)).date()
+                end_date = datetime(current_year + 1, end_month_num, end_day).date()
             
             # Calculate number of nights
             nights = (end_date - start_date).days
             
-            return {
+            result = {
                 'room_type': room_type.strip().lower(),
                 'check_in': start_date,
                 'check_out': end_date,
                 'nights': nights,
                 'adults': 2  # Default to 2 adults if not specified
             }
+            logging.info(f"Successfully parsed reservation: {result}")
+            return result
         except (ValueError, KeyError) as e:
             logging.error(f"Error parsing dates in format 4: {str(e)}")
+    else:
+        logging.warning("Failed to match the pattern for Format 4")
     
     return None
 
