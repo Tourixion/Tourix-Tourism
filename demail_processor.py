@@ -89,6 +89,62 @@ def parse_english_date(date_str: str) -> datetime.date:
     raise ValueError(f"Unable to parse date: {date_str}")
 
 def parse_english_request(email_body: str) -> Dict[str, Any]:
+    """
+    Main function to parse English reservation requests.
+    Combines existing parsing with the new concise format parsing.
+    """
+    reservation_info = {}
+    
+    # Try parsing with the existing method
+    reservation_info.update(parse_existing_english_request(email_body))
+    
+    # If the existing method didn't parse critical information, try the concise method
+    if not reservation_info.get('check_in') or not reservation_info.get('check_out'):
+        concise_info = parse_concise_english_request(email_body)
+        reservation_info.update(concise_info)
+    
+    return reservation_info
+
+def parse_concise_english_request(email_body: str) -> Dict[str, Any]:
+    """
+    Parse concise English reservation requests in the format:
+    [date] [room type] [number of nights]
+    Example: "10/1 ONE APARTMENT 3 NIGHTS"
+    """
+    reservation_info = {}
+    
+    # Pattern to match the concise format
+    pattern = r'(\d{1,2}/\d{1,2})\s+(.+?)\s+(\d+)\s+NIGHTS'
+    match = re.search(pattern, email_body, re.IGNORECASE)
+    
+    if match:
+        date_str, room_type, nights = match.groups()
+        
+        # Parse check-in date
+        try:
+            check_in = parse_english_date(date_str)
+            reservation_info['check_in'] = check_in
+            
+            # Calculate check-out date
+            reservation_info['check_out'] = check_in + timedelta(days=int(nights))
+            
+            # Set number of nights
+            reservation_info['nights'] = int(nights)
+            
+            # Set room type
+            reservation_info['room_type'] = room_type.strip().lower()
+            
+            # Default to 2 adults if not specified
+            reservation_info['adults'] = 2
+        except ValueError as e:
+            logging.error(f"Failed to parse concise request: {str(e)}")
+    
+    return reservation_info
+
+def parse_existing_english_request(email_body: str) -> Dict[str, Any]:
+    """
+    Existing parsing logic (unchanged from the original code)
+    """
     reservation_info = {}
 
     # Extract check-in and check-out dates
