@@ -347,13 +347,13 @@ def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Parsing email content (Format 4):")
     logging.info(email_body)
     
-    # Greek month abbreviations to numbers
+    # Greek month names and abbreviations to numbers
     greek_months = {
-        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαι': 5, 'ιουν': 6,
+        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'μαι': 5, 'ιουν': 6,
         'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
-        'ιανουαριου': 1, 'φεβρουαριου': 2, 'μαρτιου': 3, 'απριλιου': 4, 'μαιου': 5,
-        'ιουνιου': 6, 'ιουλιου': 7, 'αυγουστου': 8, 'σεπτεμβριου': 9,
-        'οκτωβριου': 10, 'νοεμβριου': 11, 'δεκεμβριου': 12
+        'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5,
+        'ιούνιος': 6, 'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9,
+        'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
     }
     
     # Regular expression pattern for the new format
@@ -365,10 +365,17 @@ def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
         room_type, start_day, start_month, end_day, end_month = match.groups()
         logging.info(f"Parsed groups: room_type={room_type}, start_day={start_day}, start_month={start_month}, end_day={end_day}, end_month={end_month}")
         
+        def parse_greek_month(month_str):
+            month_str = month_str.lower()
+            for key, value in greek_months.items():
+                if month_str.startswith(key):
+                    return value
+            return None
+
         try:
             # Convert Greek month names to numbers
-            start_month_num = greek_months.get(start_month.lower())
-            end_month_num = greek_months.get(end_month.lower())
+            start_month_num = parse_greek_month(start_month)
+            end_month_num = parse_greek_month(end_month)
             
             if not start_month_num or not end_month_num:
                 logging.error(f"Failed to parse month: start_month={start_month}, end_month={end_month}")
