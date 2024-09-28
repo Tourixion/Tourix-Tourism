@@ -71,44 +71,63 @@ def parse_greeklish_request(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Parsing Greeklish email content:")
     logging.info(email_body)
     
-    # Expanded Greeklish to Greek month translation
-    greeklish_months = {
-        # Short forms
-        'ian': 'ιαν', 'ian': 'ιαν', 'gen': 'ιαν',
-        'feb': 'φεβ', 'fev': 'φεβ',
-        'mar': 'μαρ', 'mart': 'μαρ',
-        'apr': 'απρ', 'apr': 'απρ',
-        'mai': 'μαι', 'may': 'μαι',
-        'ioun': 'ιουν', 'iun': 'ιουν', 'jun': 'ιουν',
-        'ioul': 'ιουλ', 'iul': 'ιουλ', 'jul': 'ιουλ',
-        'aug': 'αυγ', 'avg': 'αυγ',
-        'sep': 'σεπ', 'sept': 'σεπ',
-        'okt': 'οκτ', 'oct': 'οκτ',
-        'noe': 'νοε', 'nov': 'νοε',
-        'dek': 'δεκ', 'dec': 'δεκ',
-        
-        # Full names
-        'ianouarios': 'ιανουάριος', 'ianuarios': 'ιανουάριος', 'genaris': 'ιανουάριος',
-        'febrouarios': 'φεβρουάριος', 'fevruarios': 'φεβρουάριος', 'flevaris': 'φεβρουάριος',
-        'martios': 'μάρτιος', 'martis': 'μάρτιος',
-        'aprilios': 'απρίλιος', 'aprilis': 'απρίλιος',
-        'maios': 'μάιος', 'mais': 'μάιος',
-        'iounios': 'ιούνιος', 'junios': 'ιούνιος',
-        'ioulios': 'ιούλιος', 'julios': 'ιούλιος',
-        'augoustos': 'αύγουστος', 'avgustos': 'αύγουστος',
-        'septembrios': 'σεπτέμβριος', 'septevrios': 'σεπτέμβριος',
-        'oktobrios': 'οκτώβριος', 'octovrios': 'οκτώβριος',
-        'noembrios': 'νοέμβριος', 'noemvrios': 'νοέμβριος',
-        'dekembrios': 'δεκέμβριος', 'decemvrios': 'δεκέμβριος',
-        
-        # Additional variations
-        'genaras': 'ιανουάριος', 'flevaris': 'φεβρουάριος',
-        'maartios': 'μάρτιος', 'aprilos': 'απρίλιος',
-        'mays': 'μάιος', 'lounis': 'ιούνιος',
-        'loulis': 'ιούλιος', 'avghoustos': 'αύγουστος',
-        'septemvris': 'σεπτέμβριος', 'octomvris': 'οκτώβριος',
-        'noemvris': 'νοέμβριος', 'thekemvrios': 'δεκέμβριος'
-    }
+    def translate_greeklish_month(month_str: str) -> str:
+        greeklish_months = {
+            # Short forms
+            'ian': 'ιαν', 'gen': 'ιαν',
+            'feb': 'φεβ', 'fev': 'φεβ',
+            'mar': 'μαρ', 'mart': 'μαρ',
+            'apr': 'απρ',
+            'mai': 'μαι', 'may': 'μαι',
+            'ioun': 'ιουν', 'iun': 'ιουν', 'jun': 'ιουν',
+            'ioul': 'ιουλ', 'iul': 'ιουλ', 'jul': 'ιουλ',
+            'aug': 'αυγ', 'avg': 'αυγ',
+            'sep': 'σεπ', 'sept': 'σεπ',
+            'okt': 'οκτ', 'oct': 'οκτ',
+            'noe': 'νοε', 'nov': 'νοε',
+            'dek': 'δεκ', 'dec': 'δεκ',
+            
+            # Full names and variations
+            'ianouarios': 'ιανουάριος', 'ianuarios': 'ιανουάριος', 'genaris': 'ιανουάριος',
+            'febrouarios': 'φεβρουάριος', 'fevruarios': 'φεβρουάριος', 'flevaris': 'φεβρουάριος',
+            'martios': 'μάρτιος', 'martis': 'μάρτιος',
+            'aprilios': 'απρίλιος', 'aprilis': 'απρίλιος',
+            'maios': 'μάιος', 'mais': 'μάιος',
+            'iounios': 'ιούνιος', 'junios': 'ιούνιος',
+            'ioulios': 'ιούλιος', 'julios': 'ιούλιος',
+            'augoustos': 'αύγουστος', 'avgustos': 'αύγουστος',
+            'septembrios': 'σεπτέμβριος', 'septevrios': 'σεπτέμβριος',
+            'oktobrios': 'οκτώβριος', 'octovrios': 'οκτώβριος',
+            'noembrios': 'νοέμβριος', 'noemvrios': 'νοέμβριος',
+            'dekembrios': 'δεκέμβριος', 'decemvrios': 'δεκέμβριος',
+            
+            # Additional variations
+            'genaras': 'ιανουάριος', 'flevaris': 'φεβρουάριος',
+            'maartios': 'μάρτιος', 'aprilos': 'απρίλιος',
+            'mays': 'μάιος', 'lounis': 'ιούνιος',
+            'loulis': 'ιούλιος', 'avghoustos': 'αύγουστος',
+            'septemvris': 'σεπτέμβριος', 'octomvris': 'οκτώβριος',
+            'noemvris': 'νοέμβριος', 'thekemvrios': 'δεκέμβριος'
+        }
+        month_str = month_str.lower()
+        for greeklish, greek in greeklish_months.items():
+            if month_str.startswith(greeklish):
+                return greek
+        return month_str  # If no match found, return original string
+    
+    def parse_greek_month(month_str: str) -> Optional[int]:
+        greek_months = {
+            'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'μαι': 5, 'ιουν': 6,
+            'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12,
+            'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5,
+            'ιούνιος': 6, 'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9,
+            'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12
+        }
+        month_str = month_str.lower()
+        for key, value in greek_months.items():
+            if month_str.startswith(key):
+                return value
+        return None
     
     # Regular expression pattern for Greeklish format
     pattern = r'([\w]+(?:\s+[\w]+)?)\s+(\d{1,2})?\s*([\w]{3,15})\s+(?:me|eos|mexri|os)\s+(\d{1,2})?\s*([\w]{3,15})'
@@ -119,19 +138,12 @@ def parse_greeklish_request(email_body: str) -> Optional[Dict[str, Any]]:
         room_type, start_day, start_month, end_day, end_month = match.groups()
         logging.info(f"Parsed Greeklish groups: room_type={room_type}, start_day={start_day}, start_month={start_month}, end_day={end_day}, end_month={end_month}")
         
-        def translate_greeklish_month(month_str):
-            month_str = month_str.lower()
-            for greeklish, greek in greeklish_months.items():
-                if month_str.startswith(greeklish):
-                    return greek
-            return month_str  # If no match found, return original string
-
         try:
             # Translate Greeklish months to Greek
             start_month_greek = translate_greeklish_month(start_month)
             end_month_greek = translate_greeklish_month(end_month)
             
-            # Use the existing Greek month parsing logic
+            # Use the Greek month parsing logic
             start_month_num = parse_greek_month(start_month_greek)
             end_month_num = parse_greek_month(end_month_greek)
             
@@ -562,7 +574,8 @@ def parse_reservation_request(email_body: str) -> Dict[str, Any]:
     if language == 'el':
         reservation_info = parse_greek_request(normalized_text)
     else:
-        reservation_info = parse_english_request(normalized_text)
+        # Try Greeklish parsing first, then fall back to English if it fails
+        reservation_info = parse_greeklish_request(normalized_text) or parse_english_request(normalized_text)
     
     # Calculate check-out date if not provided
     if 'check_in' in reservation_info and 'check_out' not in reservation_info and 'nights' in reservation_info:
