@@ -61,6 +61,115 @@ def clean_email_body(email_body: str) -> str:
     logging.info(email_body)
     
     return email_body
+###############################################################################################dds
+def parse_greeklish_request(email_body: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Greeklish reservation requests in the format:
+    [room type] [start date] me/eos [end date]
+    Example: "ena diamerisma 4 noem me 16 noem"
+    """
+    logging.info("Parsing Greeklish email content:")
+    logging.info(email_body)
+    
+    # Expanded Greeklish to Greek month translation
+    greeklish_months = {
+        # Short forms
+        'ian': 'ιαν', 'ian': 'ιαν', 'gen': 'ιαν',
+        'feb': 'φεβ', 'fev': 'φεβ',
+        'mar': 'μαρ', 'mart': 'μαρ',
+        'apr': 'απρ', 'apr': 'απρ',
+        'mai': 'μαι', 'may': 'μαι',
+        'ioun': 'ιουν', 'iun': 'ιουν', 'jun': 'ιουν',
+        'ioul': 'ιουλ', 'iul': 'ιουλ', 'jul': 'ιουλ',
+        'aug': 'αυγ', 'avg': 'αυγ',
+        'sep': 'σεπ', 'sept': 'σεπ',
+        'okt': 'οκτ', 'oct': 'οκτ',
+        'noe': 'νοε', 'nov': 'νοε',
+        'dek': 'δεκ', 'dec': 'δεκ',
+        
+        # Full names
+        'ianouarios': 'ιανουάριος', 'ianuarios': 'ιανουάριος', 'genaris': 'ιανουάριος',
+        'febrouarios': 'φεβρουάριος', 'fevruarios': 'φεβρουάριος', 'flevaris': 'φεβρουάριος',
+        'martios': 'μάρτιος', 'martis': 'μάρτιος',
+        'aprilios': 'απρίλιος', 'aprilis': 'απρίλιος',
+        'maios': 'μάιος', 'mais': 'μάιος',
+        'iounios': 'ιούνιος', 'junios': 'ιούνιος',
+        'ioulios': 'ιούλιος', 'julios': 'ιούλιος',
+        'augoustos': 'αύγουστος', 'avgustos': 'αύγουστος',
+        'septembrios': 'σεπτέμβριος', 'septevrios': 'σεπτέμβριος',
+        'oktobrios': 'οκτώβριος', 'octovrios': 'οκτώβριος',
+        'noembrios': 'νοέμβριος', 'noemvrios': 'νοέμβριος',
+        'dekembrios': 'δεκέμβριος', 'decemvrios': 'δεκέμβριος',
+        
+        # Additional variations
+        'genaras': 'ιανουάριος', 'flevaris': 'φεβρουάριος',
+        'maartios': 'μάρτιος', 'aprilos': 'απρίλιος',
+        'mays': 'μάιος', 'lounis': 'ιούνιος',
+        'loulis': 'ιούλιος', 'avghoustos': 'αύγουστος',
+        'septemvris': 'σεπτέμβριος', 'octomvris': 'οκτώβριος',
+        'noemvris': 'νοέμβριος', 'thekemvrios': 'δεκέμβριος'
+    }
+    
+    # Regular expression pattern for Greeklish format
+    pattern = r'([\w]+(?:\s+[\w]+)?)\s+(\d{1,2})?\s*([\w]{3,15})\s+(?:me|eos|mexri|os)\s+(\d{1,2})?\s*([\w]{3,15})'
+    match = re.search(pattern, email_body, re.IGNORECASE)
+    
+    if match:
+        logging.info(f"Matched Greeklish pattern: {match.group()}")
+        room_type, start_day, start_month, end_day, end_month = match.groups()
+        logging.info(f"Parsed Greeklish groups: room_type={room_type}, start_day={start_day}, start_month={start_month}, end_day={end_day}, end_month={end_month}")
+        
+        def translate_greeklish_month(month_str):
+            month_str = month_str.lower()
+            for greeklish, greek in greeklish_months.items():
+                if month_str.startswith(greeklish):
+                    return greek
+            return month_str  # If no match found, return original string
+
+        try:
+            # Translate Greeklish months to Greek
+            start_month_greek = translate_greeklish_month(start_month)
+            end_month_greek = translate_greeklish_month(end_month)
+            
+            # Use the existing Greek month parsing logic
+            start_month_num = parse_greek_month(start_month_greek)
+            end_month_num = parse_greek_month(end_month_greek)
+            
+            if not start_month_num or not end_month_num:
+                logging.error(f"Failed to parse Greeklish month: start_month={start_month}, end_month={end_month}")
+                return None
+            
+            # If day is not provided, default to 1
+            start_day = int(start_day) if start_day else 1
+            end_day = int(end_day) if end_day else 1
+            
+            # Create date objects
+            current_year = datetime.now().year
+            start_date = datetime(current_year, start_month_num, start_day).date()
+            end_date = datetime(current_year, end_month_num, end_day).date()
+            
+            # If end date is before start date, it might be in the next year
+            if end_date < start_date:
+                end_date = datetime(current_year + 1, end_month_num, end_day).date()
+            
+            # Calculate number of nights
+            nights = (end_date - start_date).days
+            
+            result = {
+                'room_type': room_type.strip().lower(),
+                'check_in': start_date,
+                'check_out': end_date,
+                'nights': nights,
+                'adults': 2  # Default to 2 adults if not specified
+            }
+            logging.info(f"Successfully parsed Greeklish reservation: {result}")
+            return result
+        except (ValueError, KeyError) as e:
+            logging.error(f"Error parsing dates in Greeklish format: {str(e)}")
+    else:
+        logging.warning("Failed to match the pattern for Greeklish format")
+    
+    return None
 
 ###############################################################################################d
 
