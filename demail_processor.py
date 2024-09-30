@@ -542,9 +542,9 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     """
     logging.info("Parsing email content (Format 6):")
     logging.info(email_body)
-    
+
     # Regular expression pattern for Format 6
-    pattern = r'(?:άφιξη|αφιξη)\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*(?:και|και\s+?αναχ[ωώ]ρηση|αναχ[ωώ]ρηση)\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*(?:για|με)\s*(\d+)\s*(?:ενήλικ(?:ες|ας)|ατομ[οα])'
+    pattern = r'άφιξη\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*και\s*αναχ[ωώ]ρηση\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*για\s*(\d+)\s*ενήλικες'
     match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
     
     if match:
