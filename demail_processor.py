@@ -63,7 +63,7 @@ def clean_email_body(email_body: str) -> str:
     
     return email_body
 ###############################################################################################dds
-def parse_greeklish_request(email_body: str) -> Optional[Dict[str, Any]]:
+def _greeklish_request(email_body: str) -> Optional[Dict[str, Any]]:
     """
     Parse Greeklish reservation requests in the format:
     [room type] [start date] me/eos [end date]
@@ -550,12 +550,6 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     email_body = re.sub(r'\s+', ' ', email_body)
     logging.info(f"Normalized email content (spaces regularized):\n{email_body}")
 
-    # Log each word separately
-    words = email_body.split()
-    logging.info("Words in the email:")
-    for i, word in enumerate(words):
-        logging.info(f"Word {i+1}: {word}")
-
     # Extract dates with more flexible pattern
     date_pattern = r'(\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))'
     date_matches = re.findall(date_pattern, email_body)
@@ -575,7 +569,7 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     adults = int(adults_match.group(1)) if adults_match else None
     logging.info(f"Extracted adults: {adults}")
 
-    if arrival_date and departure_date and adults is not None:
+    if arrival_date and departure_date:
         try:
             arrival = datetime.strptime(arrival_date, "%d/%m/%y" if len(arrival_date) == 8 else "%d/%m/%Y").date()
             departure = datetime.strptime(departure_date, "%d/%m/%y" if len(departure_date) == 8 else "%d/%m/%Y").date()
@@ -598,7 +592,7 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
                 'check_in': arrival,
                 'check_out': departure,
                 'nights': nights,
-                'adults': adults
+                'adults': adults if adults is not None else 2  # Default to 2 adults if not specified
             }
             logging.info(f"Successfully parsed reservation: {result}")
             return result
@@ -624,21 +618,17 @@ def parse_with_spacy(email_body: str) -> Optional[Dict[str, Any]]:
     # Process the text with spaCy
     doc = nlp(email_body)
 
-    # Log each token and its properties
-    logging.info("Tokens in the email:")
-    for i, token in enumerate(doc):
-        logging.info(f"Token {i+1}: text='{token.text}', lemma='{token.lemma_}', pos='{token.pos_}', tag='{token.tag_}', dep='{token.dep_}'")
-
     # Extract dates and numbers
     dates = []
     numbers = []
     for ent in doc.ents:
-        logging.info(f"Found entity: text='{ent.text}', label='{ent.label_}'")
         if ent.label_ == "DATE":
             dates.append(ent.text)
         elif ent.label_ == "CARDINAL":
             numbers.append(ent.text)
 
+    logging.info(f"Extracted dates: {dates}")
+    logging.info(f"Extracted numbers: {numbers}")
     logging.info(f"Extracted dates: {dates}")
     logging.info(f"Extracted numbers: {numbers}")
 
