@@ -538,13 +538,17 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     """
     Parse Greek reservation requests in the format:
     άφιξη DD/MM/YY(YY) και αναχώρηση DD/MM/YY(YY) για X ενήλικες
-    Example: "άφιξη 02/10/24 και αναχώρηση 05/10/2024 για 2 ενήλικες"
+    Handles multi-line input and slight variations in wording.
+    Example: "άφιξη 02/10/24 και αναχωρηση 05/10/2024 για 2 ενηλικες"
     """
-    logging.info("Parsing email content (Format 6):")
+    logging.info("Parsing email content (Format 5):")
     logging.info(email_body)
 
-    # Regular expression pattern for Format 6
-    pattern = r'άφιξη\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*και\s*αναχ[ωώ]ρηση\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*για\s*(\d+)\s*ενήλικες'
+    # Replace newlines with spaces to handle multi-line emails
+    email_body = re.sub(r'\s+', ' ', email_body)
+
+    # Regular expression pattern for Format 5
+    pattern = r'άφιξη\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*και\s*αναχ[ωώ]ρηση\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*για\s*(\d+)\s*ενήλικ(?:ες|ας)'
     match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
     
     if match:
@@ -569,9 +573,9 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
             logging.info(f"Successfully parsed reservation: {result}")
             return result
         except ValueError as e:
-            logging.error(f"Error parsing dates in format 6: {str(e)}")
+            logging.error(f"Error parsing dates in format 5: {str(e)}")
     else:
-        logging.warning("Failed to match the pattern for Format 6")
+        logging.warning("Failed to match the pattern for Format 5")
     
     return None
 
