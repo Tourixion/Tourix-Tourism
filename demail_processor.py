@@ -541,14 +541,17 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     Handles multi-line input and slight variations in wording.
     Example: "άφιξη 02/10/24 και αναχωρηση 05/10/2024 για 2 ενηλικες"
     """
-    logging.info("Parsing email content (Format 5):")
-    logging.info(email_body)
+    logging.info("Entering parse_format_5 function")
+    logging.info(f"Original email content:\n{email_body}")
 
     # Replace newlines with spaces to handle multi-line emails
     email_body = re.sub(r'\s+', ' ', email_body)
+    logging.info(f"Preprocessed email content: {email_body}")
 
     # Regular expression pattern for Format 5
     pattern = r'άφιξη\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*και\s*αναχ[ωώ]ρηση\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*για\s*(\d+)\s*ενήλικ(?:ες|ας)'
+    logging.info(f"Using regex pattern: {pattern}")
+
     match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
     
     if match:
@@ -558,11 +561,17 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
         
         try:
             # Parse dates
+            logging.info(f"Attempting to parse arrival date: {arrival_date}")
             arrival = datetime.strptime(arrival_date, "%d/%m/%y" if len(arrival_date) == 8 else "%d/%m/%Y").date()
+            logging.info(f"Parsed arrival date: {arrival}")
+
+            logging.info(f"Attempting to parse departure date: {departure_date}")
             departure = datetime.strptime(departure_date, "%d/%m/%y" if len(departure_date) == 8 else "%d/%m/%Y").date()
+            logging.info(f"Parsed departure date: {departure}")
             
             # Calculate number of nights
             nights = (departure - arrival).days
+            logging.info(f"Calculated nights: {nights}")
             
             result = {
                 'check_in': arrival,
@@ -574,9 +583,14 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
             return result
         except ValueError as e:
             logging.error(f"Error parsing dates in format 5: {str(e)}")
+            logging.error(f"Arrival date string: {arrival_date}")
+            logging.error(f"Departure date string: {departure_date}")
     else:
         logging.warning("Failed to match the pattern for Format 5")
-    
+        logging.info("Regex match attempt failed. Showing the first 100 characters of the email body:")
+        logging.info(email_body[:100])
+
+    logging.info("Exiting parse_format_5 function without successful parse")
     return None
 
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
