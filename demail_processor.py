@@ -705,7 +705,53 @@ def parse_flexible_date(date_string: str) -> Optional[datetime.date]:
     
     logging.error(f"Unable to parse date string: {date_string}")
     return None
+    
+def parse_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
+    logging.info("Entering parse_flexible_greek function")
+    logging.info(f"Original email content:\n{email_body}")
 
+    # Normalize the email content
+    email_body = email_body.lower()
+    email_body = unicodedata.normalize('NFKD', email_body).encode('ASCII', 'ignore').decode('ASCII')
+
+    # Extract dates
+    date_pattern = r'(\d{1,2}/\d{1,2})'
+    dates = re.findall(date_pattern, email_body)
+    
+    # Extract number of adults and children
+    adults_pattern = r'(\d+)\s*(?:ενηλικ(?:ες|ας)|ατομ[αο])'
+    children_pattern = r'(\d+)\s*(?:παιδι(?:α)?)'
+    
+    adults_match = re.search(adults_pattern, email_body)
+    children_match = re.search(children_pattern, email_body)
+
+    if len(dates) >= 2 and adults_match:
+        current_year = datetime.now().year
+        check_in = datetime.strptime(f"{dates[0]}/{current_year}", "%d/%m/%Y").date()
+        check_out = datetime.strptime(f"{dates[1]}/{current_year}", "%d/%m/%Y").date()
+        
+        # If check_out is before check_in, assume it's next year
+        if check_out < check_in:
+            check_out = check_out.replace(year=current_year + 1)
+
+        adults = int(adults_match.group(1))
+        children = int(children_match.group(1)) if children_match else 0
+
+        nights = (check_out - check_in).days
+
+        result = {
+            'check_in': check_in,
+            'check_out': check_out,
+            'nights': nights,
+            'adults': adults,
+            'children': children
+        }
+        logging.info(f"Successfully parsed reservation: {result}")
+        return result
+    else:
+        logging.warning("Failed to extract all required information")
+        return None
+        
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     """
     Main function to parse Greek reservation requests.
@@ -720,7 +766,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_5, parse_format_4, parse_format_1, parse_format_2, parse_format_3, parse_with_spacy]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4, parse_format_5, parse_with_spacy, parse_flexible_greek]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.info(f"Attempting to parse with format {i}")
