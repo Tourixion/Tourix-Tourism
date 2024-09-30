@@ -755,7 +755,7 @@ def parse_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
     else:
         logging.warning("Failed to extract all required information")
         return None
-        def parse_dateparser_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
+def parse_dateparser_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Entering parse_dateparser_flexible_greek function")
     logging.info(f"Original email content:\n{email_body}")
 
@@ -854,7 +854,133 @@ def parse_dateparser_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]
     else:
         logging.warning("Failed to extract all required information")
         return None
+def stepwise_flexible_parser(email_body: str) -> Optional[Dict[str, Any]]:
+    logging.info("Entering stepwise_flexible_parser function")
+    logging.info(f"Original email content:\n{email_body}")
 
+    # Normalize the email content
+    email_body = email_body.lower()
+
+    # Step 1: Extract all dates
+    dates = extract_dates(email_body)
+    if len(dates) < 2:
+        logging.warning("Failed to extract at least two dates")
+        return None
+
+    # Step 2: Determine check-in and check-out dates
+    check_in, check_out = determine_stay_dates(dates)
+
+    # Step 3: Extract number of adults
+    adults = extract_adults(email_body)
+
+    # Step 4: Extract number of children
+    children = extract_children(email_body)
+
+    # Create result
+    result = {
+        'check_in': check_in,
+        'check_out': check_out,
+        'nights': (check_out - check_in).days,
+        'adults': adults,
+        'children': children
+    }
+
+    logging.info(f"Successfully parsed reservation: {result}")
+    return result
+
+def extract_dates(text: str) -> List[datetime.date]:
+    date_patterns = [
+        r'\d{1,2}/\d{1,2}(?:/\d{2,4})?',  # DD/MM or DD/MM/YYYY
+        r'\d{1,2}-\d{1,2}(?:-\d{2,4})?',  # DD-MM or DD-MM-YYYY
+        r'\d{1,2}\s+(?:ιαν|φεβ|μαρ|απρ|μαϊ|μαι|ιουν|ιουλ|αυγ|σεπ|οκτ|νοε|δεκ)[α-ωά-ώ]*\.?\s+\d{2,4}?'  # DD Month YYYY
+    ]
+    
+    dates = []
+    for pattern in date_patterns:
+        matches = re.findall(pattern, text)
+        for match in matches:
+            try:
+                date = parse_flexible_date(match)
+                if date:
+                    dates.append(date)
+            except ValueError:
+                continue
+    
+    logging.info(f"Extracted dates: {dates}")
+    return dates
+
+def determine_stay_dates(dates: List[datetime.date]) -> tuple:
+    sorted_dates = sorted(dates)
+    check_in = sorted_dates[0]
+    check_out = sorted_dates[-1]
+    
+    # If check_out is before or same as check_in, assume it's next year
+    if check_out <= check_in:
+        check_out = check_out.replace(year=check_out.year + 1)
+    
+    logging.info(f"Determined check-in: {check_in}, check-out: {check_out}")
+    return check_in, check_out
+
+def extract_adults(text: str) -> int:
+    patterns = [
+        r'(\d+)\s*(?:ενήλικ(?:ες|ας)|ατομ[αο]|adults?|persons?|people)',
+        r'(\d+)\s*(?:άτομα|ατομα)'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+    logging.info("No adult count found, defaulting to 2")
+    return 2  # Default to 2 adults if not specified
+
+def extract_children(text: str) -> int:
+    patterns = [
+        r'(\d+)\s*(?:παιδί|παιδιά|παιδι[αά]|children|kids)',
+        r'(\d+)\s*(?:child|kid)'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+    logging.info("No child count found, defaulting to 0")
+    return 0  # Default to 0 children if not specified
+
+def parse_flexible_date(date_string: str) -> Optional[datetime.date]:
+    date_formats = [
+        "%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y",
+        "%d %b %Y", "%d %B %Y", "%d %b", "%d %B"
+    ]
+    
+    for fmt in date_formats:
+        try:
+            date = datetime.strptime(date_string, fmt)
+            if '%y' in fmt and date.year > datetime.now().year % 100:
+                date = date.replace(year=date.year + 1900)
+            elif '%y' in fmt:
+                date = date.replace(year=date.year + 2000)
+            return date.date()
+        except ValueError:
+            continue
+    
+    # Try parsing with Greek month names
+    greek_months = {
+        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'μαι': 5, 'ιουν': 6,
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
+    }
+    
+    match = re.match(r'(\d{1,2})\s+([α-ωά-ώ]{3,})[α-ωά-ώ.]*\.?\s*(\d{2,4})?', date_string)
+    if match:
+        day, month, year = match.groups()
+        month_num = next((num for abbr, num in greek_months.items() if month.startswith(abbr)), None)
+        if month_num:
+            year = year or str(datetime.now().year)
+            try:
+                return datetime(int(year), month_num, int(day)).date()
+            except ValueError:
+                pass
+    
+    logging.warning(f"Unable to parse date string: {date_string}")
+    return None
 
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     """
@@ -870,7 +996,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4, parse_format_5, parse_with_spacy, parse_flexible_greek, parse_dateparser_flexible_greek]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4, parse_format_5, parse_with_spacy, parse_flexible_greek, parse_dateparser_flexible_greek, stepwise_flexible_parser]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.info(f"Attempting to parse with format {i}")
