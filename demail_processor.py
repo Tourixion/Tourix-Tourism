@@ -24,6 +24,8 @@ from spacy.matcher import Matcher
 from datetime import datetime, timedelta, date
 import re
 from transliterate import detect_language as transliterate_detect_language, translit
+import dateparser
+
 
 
 # Configure logging
@@ -753,7 +755,107 @@ def parse_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
     else:
         logging.warning("Failed to extract all required information")
         return None
+        def parse_dateparser_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
+    logging.info("Entering parse_dateparser_flexible_greek function")
+    logging.info(f"Original email content:\n{email_body}")
+
+    # Normalize the email content
+    email_body = email_body.lower()
+
+    # Extract dates using dateparser
+    date_pattern = r'(?:άφιξη|αναχώρηση|από|έως|μέχρι)\s*([\w\s/]+)'
+    date_matches = re.findall(date_pattern, email_body)
+    
+    parsed_dates = []
+    for date_str in date_matches:
+        parsed_date = dateparser.parse(date_str, languages=['el'], settings={'DATE_ORDER': 'DMY'})
+        if parsed_date:
+            parsed_dates.append(parsed_date.date())
+
+    # Extract number of adults and children
+    adults_pattern = r'(\d+)\s*(?:ενήλικ(?:ες|ας)|ατομ[αο])'
+    children_pattern = r'(\d+)\s*(?:παιδί|παιδιά|παιδι[αά])'
+    
+    adults_match = re.search(adults_pattern, email_body)
+    children_match = re.search(children_pattern, email_body)
+
+    if len(parsed_dates) >= 2:
+        check_in = min(parsed_dates)
+        check_out = max(parsed_dates)
         
+        # If check_out is before check_in, assume it's next year
+        if check_out <= check_in:
+            check_out = check_out.replace(year=check_out.year + 1)
+
+        adults = int(adults_match.group(1)) if adults_match else 2  # Default to 2 if not specified
+        children = int(children_match.group(1)) if children_match else 0
+
+        nights = (check_out - check_in).days
+
+        result = {
+            'check_in': check_in,
+            'check_out': check_out,
+            'nights': nights,
+            'adults': adults,
+            'children': children
+        }
+        logging.info(f"Successfully parsed reservation: {result}")
+        return result
+    else:
+        logging.warning("Failed to extract all required information")
+        return None
+
+def parse_dateparser_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
+    logging.info("Entering parse_dateparser_flexible_greek function")
+    logging.info(f"Original email content:\n{email_body}")
+
+    # Normalize the email content
+    email_body = email_body.lower()
+
+    # Extract dates using dateparser
+    date_pattern = r'(?:άφιξη|αναχώρηση|από|έως|μέχρι)\s*([\w\s/]+)'
+    date_matches = re.findall(date_pattern, email_body)
+    
+    parsed_dates = []
+    for date_str in date_matches:
+        parsed_date = dateparser.parse(date_str, languages=['el'], settings={'DATE_ORDER': 'DMY'})
+        if parsed_date:
+            parsed_dates.append(parsed_date.date())
+
+    # Extract number of adults and children
+    adults_pattern = r'(\d+)\s*(?:ενήλικ(?:ες|ας)|ατομ[αο])'
+    children_pattern = r'(\d+)\s*(?:παιδί|παιδιά|παιδι[αά])'
+    
+    adults_match = re.search(adults_pattern, email_body)
+    children_match = re.search(children_pattern, email_body)
+
+    if len(parsed_dates) >= 2:
+        check_in = min(parsed_dates)
+        check_out = max(parsed_dates)
+        
+        # If check_out is before check_in, assume it's next year
+        if check_out <= check_in:
+            check_out = check_out.replace(year=check_out.year + 1)
+
+        adults = int(adults_match.group(1)) if adults_match else 2  # Default to 2 if not specified
+        children = int(children_match.group(1)) if children_match else 0
+
+        nights = (check_out - check_in).days
+
+        result = {
+            'check_in': check_in,
+            'check_out': check_out,
+            'nights': nights,
+            'adults': adults,
+            'children': children
+        }
+        logging.info(f"Successfully parsed reservation: {result}")
+        return result
+    else:
+        logging.warning("Failed to extract all required information")
+        return None
+
+
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     """
     Main function to parse Greek reservation requests.
@@ -768,7 +870,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4, parse_format_5, parse_with_spacy, parse_flexible_greek]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4, parse_format_5, parse_with_spacy, parse_flexible_greek, parse_dateparser_flexible_greek]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.info(f"Attempting to parse with format {i}")
