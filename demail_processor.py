@@ -542,6 +542,9 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Entering parse_format_5 function")
     logging.info(f"Original email content:\n{email_body}")
 
+    # Remove email footer
+    email_body = re.split(r'sent with|unsubscribe', email_body, flags=re.IGNORECASE)[0]
+
     # Normalize the email content
     email_body = email_body.lower()
     email_body = re.sub(r'\s+', ' ', email_body)
@@ -550,13 +553,13 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     # Extract dates
     arrival_date = None
     departure_date = None
-    date_pattern = r'\b(\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))\b'
-    dates = re.findall(date_pattern, email_body)
-    logging.info(f"Found dates: {dates}")
+    date_pattern = r'(?:άφιξη|αφιξη|αναχ[ωώ]ρηση)\s*(\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))'
+    date_matches = re.findall(date_pattern, email_body)
+    logging.info(f"Found dates: {date_matches}")
 
-    if len(dates) >= 2:
-        arrival_date = dates[0]
-        departure_date = dates[1]
+    if len(date_matches) >= 2:
+        arrival_date = date_matches[0]
+        departure_date = date_matches[1]
 
     # Extract number of adults
     adults = None
