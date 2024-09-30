@@ -714,18 +714,20 @@ def parse_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
     email_body = email_body.lower()
     email_body = unicodedata.normalize('NFKD', email_body).encode('ASCII', 'ignore').decode('ASCII')
 
-    # Extract dates
+    # Extract dates (now more flexible to catch DD/MM format)
     date_pattern = r'(\d{1,2}/\d{1,2})'
     dates = re.findall(date_pattern, email_body)
     
-    # Extract number of adults and children
+    # Extract number of adults (more flexible pattern)
     adults_pattern = r'(\d+)\s*(?:ενηλικ(?:ες|ας)|ατομ[αο])'
-    children_pattern = r'(\d+)\s*(?:παιδι(?:α)?)'
+    
+    # Extract number of children (more flexible pattern)
+    children_pattern = r'(\d+)\s*(?:παιδι(?:α)?|παιδ)'
     
     adults_match = re.search(adults_pattern, email_body)
     children_match = re.search(children_pattern, email_body)
 
-    if len(dates) >= 2 and adults_match:
+    if len(dates) >= 2:
         current_year = datetime.now().year
         check_in = datetime.strptime(f"{dates[0]}/{current_year}", "%d/%m/%Y").date()
         check_out = datetime.strptime(f"{dates[1]}/{current_year}", "%d/%m/%Y").date()
@@ -734,7 +736,7 @@ def parse_flexible_greek(email_body: str) -> Optional[Dict[str, Any]]:
         if check_out < check_in:
             check_out = check_out.replace(year=current_year + 1)
 
-        adults = int(adults_match.group(1))
+        adults = int(adults_match.group(1)) if adults_match else 2  # Default to 2 if not specified
         children = int(children_match.group(1)) if children_match else 0
 
         nights = (check_out - check_in).days
