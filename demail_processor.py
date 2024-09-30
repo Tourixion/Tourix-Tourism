@@ -536,63 +536,60 @@ def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
 
 def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     """
-    Parse Greek reservation requests in the format:
-    άφιξη DD/MM/YY(YY) και αναχώρηση DD/MM/YY(YY) για X ενήλικες
-    Handles multi-line input and slight variations in wording.
-    Example: "άφιξη 02/10/24 και αναχωρηση 05/10/2024 για 2 ενηλικες"
+    Parse Greek reservation requests using a flexible approach.
+    Extracts arrival date, departure date, and number of adults from various formats.
     """
     logging.info("Entering parse_format_5 function")
     logging.info(f"Original email content:\n{email_body}")
 
-    # Replace newlines with spaces to handle multi-line emails
+    # Normalize the email content
+    email_body = email_body.lower()
     email_body = re.sub(r'\s+', ' ', email_body)
-    logging.info(f"Preprocessed email content: {email_body}")
+    logging.info(f"Normalized email content: {email_body}")
 
-    # Regular expression pattern for Format 5
-    pattern = r'άφιξη\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*και\s*αναχ[ωώ]ρηση\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*για\s*(\d+)\s*ενήλικ(?:ες|ας)'
-    logging.info(f"Using regex pattern: {pattern}")
+    # Extract dates
+    arrival_date = None
+    departure_date = None
+    date_pattern = r'\b(\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))\b'
+    dates = re.findall(date_pattern, email_body)
+    logging.info(f"Found dates: {dates}")
 
-    match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
-    
-    if match:
-        logging.info(f"Matched pattern: {match.group()}")
-        arrival_date, departure_date, adults = match.groups()
-        logging.info(f"Parsed groups: arrival_date={arrival_date}, departure_date={departure_date}, adults={adults}")
-        
+    if len(dates) >= 2:
+        arrival_date = dates[0]
+        departure_date = dates[1]
+
+    # Extract number of adults
+    adults = None
+    adults_pattern = r'(\d+)\s*(?:ενήλικ(?:ες|ας)|ατομ[αο])'
+    adults_match = re.search(adults_pattern, email_body)
+    if adults_match:
+        adults = int(adults_match.group(1))
+
+    logging.info(f"Extracted arrival_date: {arrival_date}, departure_date: {departure_date}, adults: {adults}")
+
+    if arrival_date and departure_date and adults:
         try:
-            # Parse dates
-            logging.info(f"Attempting to parse arrival date: {arrival_date}")
             arrival = datetime.strptime(arrival_date, "%d/%m/%y" if len(arrival_date) == 8 else "%d/%m/%Y").date()
-            logging.info(f"Parsed arrival date: {arrival}")
-
-            logging.info(f"Attempting to parse departure date: {departure_date}")
             departure = datetime.strptime(departure_date, "%d/%m/%y" if len(departure_date) == 8 else "%d/%m/%Y").date()
-            logging.info(f"Parsed departure date: {departure}")
-            
-            # Calculate number of nights
             nights = (departure - arrival).days
-            logging.info(f"Calculated nights: {nights}")
-            
+
             result = {
                 'check_in': arrival,
                 'check_out': departure,
                 'nights': nights,
-                'adults': int(adults)
+                'adults': adults
             }
             logging.info(f"Successfully parsed reservation: {result}")
             return result
         except ValueError as e:
-            logging.error(f"Error parsing dates in format 5: {str(e)}")
-            logging.error(f"Arrival date string: {arrival_date}")
-            logging.error(f"Departure date string: {departure_date}")
+            logging.error(f"Error parsing dates: {str(e)}")
     else:
-        logging.warning("Failed to match the pattern for Format 5")
-        logging.info("Regex match attempt failed. Showing the first 100 characters of the email body:")
-        logging.info(email_body[:100])
+        logging.warning("Failed to extract all required information")
+        logging.info(f"Arrival date: {arrival_date}, Departure date: {departure_date}, Adults: {adults}")
 
     logging.info("Exiting parse_format_5 function without successful parse")
     return None
-
+    
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     """
     Main function to parse Greek reservation requests.
