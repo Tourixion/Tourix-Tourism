@@ -534,6 +534,47 @@ def parse_format_4(email_body: str) -> Optional[Dict[str, Any]]:
     
     return None
 
+def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Greek reservation requests in the format:
+    άφιξη DD/MM/YY(YY) και αναχώρηση DD/MM/YY(YY) για X ενήλικες
+    Example: "άφιξη 02/10/24 και αναχώρηση 05/10/2024 για 2 ενήλικες"
+    """
+    logging.info("Parsing email content (Format 6):")
+    logging.info(email_body)
+    
+    # Regular expression pattern for Format 6
+    pattern = r'(?:άφιξη|αφιξη)\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*(?:και|και\s+?αναχ[ωώ]ρηση|αναχ[ωώ]ρηση)\s*(\d{2}/\d{2}/(?:\d{2}|\d{4}))\s*(?:για|με)\s*(\d+)\s*(?:ενήλικ(?:ες|ας)|ατομ[οα])'
+    match = re.search(pattern, email_body, re.IGNORECASE | re.UNICODE)
+    
+    if match:
+        logging.info(f"Matched pattern: {match.group()}")
+        arrival_date, departure_date, adults = match.groups()
+        logging.info(f"Parsed groups: arrival_date={arrival_date}, departure_date={departure_date}, adults={adults}")
+        
+        try:
+            # Parse dates
+            arrival = datetime.strptime(arrival_date, "%d/%m/%y" if len(arrival_date) == 8 else "%d/%m/%Y").date()
+            departure = datetime.strptime(departure_date, "%d/%m/%y" if len(departure_date) == 8 else "%d/%m/%Y").date()
+            
+            # Calculate number of nights
+            nights = (departure - arrival).days
+            
+            result = {
+                'check_in': arrival,
+                'check_out': departure,
+                'nights': nights,
+                'adults': int(adults)
+            }
+            logging.info(f"Successfully parsed reservation: {result}")
+            return result
+        except ValueError as e:
+            logging.error(f"Error parsing dates in format 6: {str(e)}")
+    else:
+        logging.warning("Failed to match the pattern for Format 6")
+    
+    return None
+
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     """
     Main function to parse Greek reservation requests.
@@ -548,7 +589,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4]
+    parsing_functions = [parse_format_1, parse_format_2, parse_format_3, parse_format_4, parse_format_5]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.debug(f"Attempting to parse with format {i}")
