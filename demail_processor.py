@@ -644,8 +644,8 @@ def parse_with_spacy(email_body: str) -> Optional[Dict[str, Any]]:
     if arrival_date and departure_date and adults is not None:
         try:
             # Convert extracted dates to datetime objects
-            arrival = parse_greek_date(arrival_date)
-            departure = parse_greek_date(departure_date)
+            arrival = parse_flexible_date(arrival_date)
+            departure = parse_flexible_date(departure_date)
 
             if arrival and departure:
                 nights = (departure - arrival).days
@@ -668,9 +668,9 @@ def parse_with_spacy(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Exiting parse_with_spacy function without successful parse")
     return None
 
-def parse_greek_date(date_string: str) -> Optional[datetime.date]:
+def parse_flexible_date(date_string: str) -> Optional[datetime.date]:
     """
-    Attempt to parse a Greek date string into a datetime.date object.
+    Attempt to parse a date string into a datetime.date object using multiple formats.
     """
     date_formats = [
         "%d/%m/%Y",
