@@ -539,6 +539,30 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Entering parse_format_5 function")
     logging.info(f"Original email content:\n{email_body}")
 
+    def parse_and_standardize_date(date_str: str) -> date:
+        """
+        Parse a date string and return a standardized date object.
+        Handles both YY and YYYY formats, assuming all dates are in the future.
+        """
+        parts = date_str.split('/')
+        if len(parts) != 3:
+            raise ValueError(f"Invalid date format: {date_str}")
+
+        day, month, year = map(int, parts)
+        
+        current_year = datetime.now().year
+        current_century = current_year // 100 * 100
+
+        if year < 100:
+            # If it's a two-digit year, assume it's in the future
+            full_year = current_century + year
+            if full_year < current_year:
+                full_year += 100
+        else:
+            full_year = year
+
+        return date(full_year, month, day)
+
     # Remove email footer
     email_body = re.split(r'sent with|unsubscribe', email_body, flags=re.IGNORECASE)[0]
     logging.info(f"Email content after footer removal:\n{email_body}")
@@ -551,14 +575,18 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info(f"Normalized email content (spaces regularized):\n{email_body}")
 
     # Extract dates with more flexible pattern
-    date_pattern = r'(\d{1,2}/\d{1,2}/(?:\d{2}|\d{4}))'
+    date_pattern = r'(\d{1,2}/\d{1,2}/\d{2,4})'
     date_matches = re.findall(date_pattern, email_body)
     logging.info(f"Found dates: {date_matches}")
 
     arrival_date = departure_date = None
     if len(date_matches) >= 2:
-        arrival_date = date_matches[0]
-        departure_date = date_matches[1]
+        try:
+            arrival_date = parse_and_standardize_date(date_matches[0])
+            departure_date = parse_and_standardize_date(date_matches[1])
+        except ValueError as e:
+            logging.error(f"Error parsing dates: {str(e)}")
+            return None
     
     logging.info(f"Extracted arrival_date: {arrival_date}")
     logging.info(f"Extracted departure_date: {departure_date}")
@@ -570,34 +598,16 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info(f"Extracted adults: {adults}")
 
     if arrival_date and departure_date:
-        try:
-            arrival = datetime.strptime(arrival_date, "%d/%m/%y" if len(arrival_date) == 8 else "%d/%m/%Y").date()
-            departure = datetime.strptime(departure_date, "%d/%m/%y" if len(departure_date) == 8 else "%d/%m/%Y").date()
-            
-            logging.info(f"Parsed arrival date: {arrival}")
-            logging.info(f"Parsed departure date: {departure}")
-            
-            # If the year is parsed as 20 instead of 2020, adjust it
-            if arrival.year < 100:
-                arrival = arrival.replace(year=arrival.year + 2000)
-            if departure.year < 100:
-                departure = departure.replace(year=departure.year + 2000)
-            
-            logging.info(f"Adjusted arrival date: {arrival}")
-            logging.info(f"Adjusted departure date: {departure}")
-            
-            nights = (departure - arrival).days
+        nights = (departure_date - arrival_date).days
 
-            result = {
-                'check_in': arrival,
-                'check_out': departure,
-                'nights': nights,
-                'adults': adults if adults is not None else 2  # Default to 2 adults if not specified
-            }
-            logging.info(f"Successfully parsed reservation: {result}")
-            return result
-        except ValueError as e:
-            logging.error(f"Error parsing dates: {str(e)}")
+        result = {
+            'check_in': arrival_date,
+            'check_out': departure_date,
+            'nights': nights,
+            'adults': adults if adults is not None else 2  # Default to 2 adults if not specified
+        }
+        logging.info(f"Successfully parsed reservation: {result}")
+        return result
     else:
         logging.warning("Failed to extract all required information")
         logging.info(f"Arrival date: {arrival_date}, Departure date: {departure_date}, Adults: {adults}")
