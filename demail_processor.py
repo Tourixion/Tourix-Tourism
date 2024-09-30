@@ -597,10 +597,103 @@ def parse_format_5(email_body: str) -> Optional[Dict[str, Any]]:
     logging.info("Exiting parse_format_5 function without successful parse")
     return None
 
+try:
+    nlp = spacy.load("el_core_news_sm")
+except IOError:
+    spacy.cli.download("el_core_news_sm")
+    nlp = spacy.load("el_core_news_sm")
+
+def parse_with_spacy(email_body: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse Greek reservation requests using spaCy as a backup method.
+    Extracts arrival date, departure date, and number of adults.
+    """
+    logging.info("Entering parse_with_spacy function")
+    logging.info(f"Original email content:\n{email_body}")
+
+    # Process the text with spaCy
+    doc = nlp(email_body)
+
+    # Extract dates and numbers
+    dates = []
+    numbers = []
+    for ent in doc.ents:
+        if ent.label_ == "DATE":
+            dates.append(ent.text)
+        elif ent.label_ == "CARDINAL":
+            numbers.append(ent.text)
+
+    logging.info(f"Extracted dates: {dates}")
+    logging.info(f"Extracted numbers: {numbers}")
+
+    # Attempt to identify check-in and check-out dates
+    arrival_date = departure_date = None
+    if len(dates) >= 2:
+        arrival_date = dates[0]
+        departure_date = dates[1]
+
+    # Attempt to identify number of adults
+    adults = None
+    for num in numbers:
+        if num.isdigit() and 1 <= int(num) <= 10:  # Assuming a reasonable range for number of adults
+            adults = int(num)
+            break
+
+    logging.info(f"Identified arrival_date: {arrival_date}, departure_date: {departure_date}, adults: {adults}")
+
+    if arrival_date and departure_date and adults is not None:
+        try:
+            # Convert extracted dates to datetime objects
+            arrival = parse_greek_date(arrival_date)
+            departure = parse_greek_date(departure_date)
+
+            if arrival and departure:
+                nights = (departure - arrival).days
+
+                result = {
+                    'check_in': arrival,
+                    'check_out': departure,
+                    'nights': nights,
+                    'adults': adults
+                }
+                logging.info(f"Successfully parsed reservation with spaCy: {result}")
+                return result
+            else:
+                logging.error("Failed to parse dates from extracted information")
+        except ValueError as e:
+            logging.error(f"Error parsing dates with spaCy: {str(e)}")
+    else:
+        logging.warning("Failed to extract all required information with spaCy")
+
+    logging.info("Exiting parse_with_spacy function without successful parse")
+    return None
+
+def parse_greek_date(date_string: str) -> Optional[datetime.date]:
+    """
+    Attempt to parse a Greek date string into a datetime.date object.
+    """
+    date_formats = [
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%d-%m-%Y",
+        "%d-%m-%y",
+        "%d %B %Y",
+        "%d %b %Y",
+    ]
+    
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(date_string, fmt).date()
+        except ValueError:
+            continue
+    
+    logging.error(f"Unable to parse date string: {date_string}")
+    return None
+
 def parse_greek_request(email_body: str) -> Dict[str, Any]:
     """
     Main function to parse Greek reservation requests.
-    Combines existing parsing methods with the new flexible format 5 parsing.
+    Now includes the spaCy backup parser.
     """
     logging.info("Starting to parse Greek reservation request")
     logging.info("Original email content:")
@@ -611,7 +704,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
     logging.info("Cleaned email content:")
     logging.info(cleaned_email)
     
-    parsing_functions = [parse_format_5, parse_format_4, parse_format_1, parse_format_2, parse_format_3]
+    parsing_functions = [parse_format_5, parse_format_4, parse_format_1, parse_format_2, parse_format_3, parse_with_spacy]
     
     for i, func in enumerate(parsing_functions, 1):
         logging.info(f"Attempting to parse with format {i}")
@@ -622,7 +715,7 @@ def parse_greek_request(email_body: str) -> Dict[str, Any]:
         else:
             logging.info(f"Format {i} parsing failed")
     
-    logging.warning("Failed to parse the email with any known format")
+    logging.warning("Failed to parse the email with any known format, including spaCy backup")
     return {'adults': 2, 'children': 0, 'room_type': 'δωμάτιο'}
 
 #################################################################dds
