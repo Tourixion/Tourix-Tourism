@@ -60,7 +60,100 @@ def clean_email_body(email_body: str) -> str:
     email_body = email_body.strip()
     logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
     return email_body
+
+
+def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
+    logger.info("Post-processing reservation info")
+    try:
+        if 'check_in' in reservation_info:
+            if isinstance(reservation_info['check_in'], str):
+                try:
+                    reservation_info['check_in'] = dateparser.parse(reservation_info['check_in']).date()
+                except:
+                    logger.error(f"Failed to parse check-in date: {reservation_info['check_in']}")
+                    reservation_info['error'] = "Invalid check-in date format"
+                    return reservation_info
+            
+            check_in = reservation_info['check_in']
+            logger.info(f"Check-in date: {check_in}")
+            
+            if 'check_out' in reservation_info:
+                if isinstance(reservation_info['check_out'], str):
+                    try:
+                        reservation_info['check_out'] = dateparser.parse(reservation_info['check_out']).date()
+                    except:
+                        logger.error(f"Failed to parse check-out date: {reservation_info['check_out']}")
+                        reservation_info['error'] = "Invalid check-out date format"
+                        return reservation_info
+                
+                check_out = reservation_info['check_out']
+                logger.info(f"Check-out date: {check_out}")
+                nights = (check_out - check_in).days
+                reservation_info['nights'] = nights
+                logger.info(f"Calculated number of nights: {nights}")
+            
+            elif 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
+                nights = reservation_info['nights']
+                check_out = check_in + timedelta(days=nights)
+                reservation_info['check_out'] = check_out
+                logger.info(f"Calculated check-out date: {check_out}")
+            
+            else:
+                logger.warning("Neither check-out date nor number of nights provided. Assuming 1 night stay.")
+                reservation_info['check_out'] = check_in + timedelta(days=1)
+                reservation_info['nights'] = 1
+        
+        else:
+            logger.error("Check-in date not found in reservation info")
+            reservation_info['error'] = "Missing check-in date"
+        
+        # Additional validation
+        if 'check_in' in reservation_info and 'check_out' in reservation_info:
+            if reservation_info['check_out'] <= reservation_info['check_in']:
+                logger.error("Check-out date is not after check-in date. This is invalid.")
+                reservation_info['error'] = "Invalid date range: Check-out must be after check-in."
+        
+        logger.info(f"Post-processed reservation info: {reservation_info}")
     
+    except Exception as e:
+        logger.error(f"Error in post-processing reservation info: {str(e)}")
+        reservation_info['error'] = f"Error in processing: {str(e)}"
+    
+    return reservation_info
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Parsing standardized content")
     reservation_info = {}
@@ -513,6 +606,7 @@ def send_error_notification(email_body: str, reservation_info: Dict[str, Any], o
 def process_email(email_msg: email.message.Message, sender_address: str) -> None:
     logger.info(f"Starting to process email from {sender_address}")
     email_body = get_email_content(email_msg)
+    staff_email = get_staff_email()  # Add this line to get the staff email
     
     try:
         logger.info("Processing email content")
