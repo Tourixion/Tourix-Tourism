@@ -1,32 +1,27 @@
+import os
+import logging
+import re
+from typing import Dict, Any, Optional
+from datetime import datetime, timedelta, date
+
 import imaplib
 import smtplib
 import email
 from email.header import decode_header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import re
-from dateutil import parser as date_parser
-from datetime import datetime, timedelta
-import os
+
 import requests
 from bs4 import BeautifulSoup
-import socket
 import ssl
-import sys
-import time
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import traceback
-import logging
-from typing import List, Dict, Any, Optional
-import unicodedata
-import spacy
-from spacy.matcher import Matcher
-from datetime import datetime, timedelta, date
-import re
-from transliterate import detect_language as transliterate_detect_language, translit
-import dateparser
-from dotenv import load_dotenv
 
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+
+from dateutil import parser as date_parser
+import dateparser
+from transliterate import detect_language as transliterate_detect_language
+
+from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
