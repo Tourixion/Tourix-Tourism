@@ -60,7 +60,7 @@ def clean_email_body(email_body: str) -> str:
     email_body = email_body.strip()
     logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
     return email_body
-
+    
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Parsing standardized content")
     reservation_info = {}
@@ -71,32 +71,34 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
             value = value.strip()
             if value and value != '[]':
                 if key in ['check_in', 'check_out']:
-                    match = re.search(r'\d{4}-\d{2}-\d{2}', value)
-                    if match:
-                        try:
-                            reservation_info[key] = datetime.strptime(match.group(), "%Y-%m-%d").date()
-                        except ValueError:
-                            logger.warning(f"Failed to parse date for {key}: {value}")
-                            reservation_info[key] = value
+                    try:
+                        reservation_info[key] = datetime.strptime(value, "%Y-%m-%d").date()
+                        logger.info(f"Parsed {key}: {reservation_info[key]}")
+                    except ValueError:
+                        logger.warning(f"Failed to parse date for {key}: {value}")
+                        reservation_info[key] = value
                 elif key in ['adults', 'children']:
                     try:
-                        reservation_info[key] = int(re.search(r'\d+', value).group())
-                    except (ValueError, AttributeError):
+                        reservation_info[key] = int(value)
+                        logger.info(f"Parsed {key}: {reservation_info[key]}")
+                    except ValueError:
                         logger.warning(f"Failed to parse integer for {key}: {value}")
                         reservation_info[key] = value
                 else:
                     reservation_info[key] = value
     logger.info(f"Parsed reservation info: {reservation_info}")
     return reservation_info
-    
+
 def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Post-processing reservation info")
     try:
         if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
             check_in = reservation_info['check_in']
+            logger.info(f"Check-in date: {check_in}")
             
             if 'check_out' in reservation_info and isinstance(reservation_info['check_out'], date):
                 check_out = reservation_info['check_out']
+                logger.info(f"Check-out date: {check_out}")
                 nights = (check_out - check_in).days
                 reservation_info['nights'] = nights
                 logger.info(f"Calculated number of nights: {nights}")
@@ -113,7 +115,8 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
                 reservation_info['nights'] = 1
         
         else:
-            logger.warning("Check-in date not found or invalid in reservation info")
+            logger.error("Check-in date not found or invalid in reservation info")
+            reservation_info['error'] = "Invalid or missing check-in date"
         
         # Additional validation
         if 'check_in' in reservation_info and 'check_out' in reservation_info:
