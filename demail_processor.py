@@ -64,19 +64,25 @@ def clean_email_body(email_body: str) -> str:
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Parsing standardized content")
     reservation_info = {}
+    current_year = datetime.now().year
     for line in standardized_content.split('\n'):
         if ':' in line:
             key, value = line.split(':', 1)
             key = key.strip().lower().replace(' ', '_')
             value = value.strip()
             if value and value != '[]':
-                if key in ['check-in', 'check_in', 'check-out', 'check_out']:
+                if key in ['check_in', 'check_out']:
                     try:
-                        reservation_info[key.replace('-', '_')] = datetime.strptime(value, "%Y-%m-%d").date()
+                        # First, try to parse as YYYY-MM-DD
+                        reservation_info[key] = datetime.strptime(value, "%Y-%m-%d").date()
                     except ValueError:
-                        logger.warning(f"Failed to parse date for {key}: {value}")
-                        reservation_info[key.replace('-', '_')] = value
-                elif key in ['adults', 'children', 'nights']:
+                        # If that fails, try to parse as DD/MM
+                        try:
+                            reservation_info[key] = parse_date(value, current_year)
+                        except ValueError:
+                            logger.warning(f"Failed to parse date for {key}: {value}")
+                            reservation_info[key] = value
+                elif key in ['adults', 'children']:
                     try:
                         reservation_info[key] = int(value)
                     except ValueError:
@@ -90,32 +96,41 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
 def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Post-processing reservation info")
     try:
-        if 'check_in' in reservation_info:
+        if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
             check_in = reservation_info['check_in']
-            if isinstance(check_in, str):
-                check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
-            reservation_info['check_in'] = check_in
             
-            if 'nights' in reservation_info:
-                nights = int(reservation_info['nights'])
+            if 'check_out' in reservation_info and isinstance(reservation_info['check_out'], date):
+                check_out = reservation_info['check_out']
+                nights = calculate_nights(check_in, check_out)
+                reservation_info['nights'] = nights
+                logger.info(f"Calculated number of nights from check-in and check-out: {nights}")
+            
+            elif 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
+                nights = reservation_info['nights']
                 check_out = check_in + timedelta(days=nights)
                 reservation_info['check_out'] = check_out
-                logger.info(f"Calculated check-out date: {check_out}")
-            elif 'check_out' in reservation_info:
-                check_out = reservation_info['check_out']
-                if isinstance(check_out, str):
-                    check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
-                nights = (check_out - check_in).days
-                reservation_info['nights'] = nights
-                logger.info(f"Calculated number of nights: {nights}")
-            logger.info(f"Processed reservation info: {reservation_info}")
+                logger.info(f"Calculated check-out date from check-in and nights: {check_out}")
+            
+            else:
+                logger.warning("Neither check-out date nor number of nights provided. Unable to complete reservation info.")
+        
         else:
-            logger.warning("Check-in date not found in reservation info")
+            logger.warning("Check-in date not found or invalid in reservation info")
+        
+        # Additional validation
+        if 'check_in' in reservation_info and 'check_out' in reservation_info:
+            if reservation_info['check_out'] <= reservation_info['check_in']:
+                logger.error("Check-out date is not after check-in date. This is invalid.")
+                reservation_info['error'] = "Invalid date range: Check-out must be after check-in."
+        
+        logger.info(f"Post-processed reservation info: {reservation_info}")
+    
     except Exception as e:
         logger.error(f"Error in post-processing reservation info: {str(e)}")
+        reservation_info['error'] = f"Error in processing: {str(e)}"
     
     return reservation_info
-
+    
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     logger.info("Sending prompt to AI model")
     api_key = os.environ.get("OPEN_ROUTER_API_KEY")
@@ -158,9 +173,25 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     logger.error("Max retries reached for AI model communication")
     raise Exception("Max retries reached for AI model communication")
     
+def parse_date(date_str: str, current_year: int) -> date:
+    """Parse a date string in the format DD/MM and return a date object."""
+    day, month = map(int, date_str.split('/'))
+    # Assume the current year, but if the resulting date is in the past, use next year
+    year = current_year
+    parsed_date = date(year, month, day)
+    if parsed_date < date.today():
+        year += 1
+        parsed_date = date(year, month, day)
+    return parsed_date
+
+def calculate_nights(check_in: date, check_out: date) -> int:
+    """Calculate the number of nights between check-in and check-out dates."""
+    return (check_out - check_in).days
+
 def transform_to_standard_format(email_body: str) -> str:
     logger.info("Transforming email content to standard format")
-    current_date = datetime.now().strftime("%Y-%m-%d")
+    current_date = datetime.now().date()
+    current_year = current_date.year
     prompt = f"""
     Transform the following email content into a standardized format:
     
@@ -170,7 +201,6 @@ def transform_to_standard_format(email_body: str) -> str:
     Standardized Format:
     Check-in: [DATE]
     Check-out: [DATE]
-    Nights: [NUMBER]
     Adults: [NUMBER]
     Children: [NUMBER]
     Room Type: [TYPE]
@@ -178,16 +208,15 @@ def transform_to_standard_format(email_body: str) -> str:
     Please follow these guidelines carefully:
     1. Fill in the [PLACEHOLDERS] with the appropriate information from the email.
     2. If any information is missing, leave the placeholder empty.
-    3. For the check-in and check-out dates, always use the format YYYY-MM-DD.
-    4. If only the number of nights is provided, leave the check-out date empty.
-    5. Pay special attention to date formats in different languages. For example, "3/10" could mean October 3rd or March 10th depending on the context.
-    6. If a date is mentioned as "tomorrow" or a day of the week, use the current date to calculate the actual date.
-    7. For dates spanning December to January, assume the year changes. For example, if check-in is in December and check-out is in January, the check-out year should be the current year + 1.
-    8. Be extremely careful with date formats like "ΑΦΙΞΗ ΑΥΡΙΟ ΠΕΜΠΤΗ 3/10 ΚΑΙ ΑΝΑΧΩΡΗΣΗ ΤΟ ΣΑΒΒΑΤΟ 05/10". Ensure you interpret these correctly based on the current date and context.
-    9. If the year is not explicitly mentioned, assume it's the current year unless the date has already passed, in which case use the next year.
-    10. Always include the full 4-digit year in your output.
+    3. For dates in the format DD/MM (e.g., 3/10, 05/10), interpret them as follows:
+       - Use the format YYYY-MM-DD in your output
+       - Assume the current year ({current_year}) unless the date has already passed, in which case use the next year
+       - Disregard any mentioned day of the week and focus solely on the numeric date
+    4. Do not calculate or include the number of nights. This will be calculated separately.
+    5. Pay special attention to date formats in different languages.
+    6. Always include the full 4-digit year in your output dates.
 
-    Current date for reference: {current_date}
+    Current date for reference: {current_date.strftime("%Y-%m-%d")}
 
     Please provide your standardized output, followed by a brief explanation of how you interpreted the dates and any assumptions you made.
     """
@@ -199,6 +228,7 @@ def transform_to_standard_format(email_body: str) -> str:
     except Exception as e:
         logger.error(f"Error during email transformation: {str(e)}")
         raise
+
 
 def process_email_content(email_body: str) -> Dict[str, Any]:
     logger.info("Processing email content")
