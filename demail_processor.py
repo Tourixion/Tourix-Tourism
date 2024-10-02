@@ -61,60 +61,6 @@ def clean_email_body(email_body: str) -> str:
     logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
     return email_body
 
-def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
-    logger.info("Starting post-processing of reservation info")
-    logger.info(f"Initial reservation info: {reservation_info}")
-    
-    try:
-        if 'check_in' in reservation_info and reservation_info['check_in']:
-            check_in = reservation_info['check_in']
-            logger.info(f"Check-in date: {check_in}")
-            
-            if 'check_out' in reservation_info and reservation_info['check_out']:
-                check_out = reservation_info['check_out']
-                logger.info(f"Check-out date: {check_out}")
-                nights = (check_out - check_in).days
-                reservation_info['nights'] = nights
-                logger.info(f"Calculated number of nights: {nights}")
-            elif 'nights' in reservation_info and reservation_info['nights']:
-                nights = reservation_info['nights']
-                check_out = check_in + timedelta(days=nights)
-                reservation_info['check_out'] = check_out
-                logger.info(f"Calculated check-out date: {check_out}")
-            else:
-                logger.warning("Neither check-out date nor number of nights provided. Unable to determine stay duration.")
-                reservation_info['check_out'] = None
-                reservation_info['nights'] = None
-        else:
-            logger.error("Check-in date not found in reservation info")
-            reservation_info['error'] = "Missing check-in date"
-        
-        # Additional validation
-        if 'check_in' in reservation_info and reservation_info['check_in'] and \
-           'check_out' in reservation_info and reservation_info['check_out']:
-            if reservation_info['check_out'] <= reservation_info['check_in']:
-                logger.error("Check-out date is not after check-in date. This is invalid.")
-                reservation_info['error'] = "Invalid date range: Check-out must be after check-in."
-        
-        # Ensure adults and children are integers
-        for key in ['adults', 'children']:
-            if key in reservation_info:
-                try:
-                    reservation_info[key] = int(reservation_info[key])
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid value for {key}: {reservation_info[key]}. Setting to 0.")
-                    reservation_info[key] = 0
-            else:
-                reservation_info[key] = 0
-        
-        logger.info(f"Final post-processed reservation info: {reservation_info}")
-    
-    except Exception as e:
-        logger.error(f"Unexpected error in post-processing reservation info: {str(e)}")
-        reservation_info['error'] = f"Error in processing: {str(e)}"
-    
-    return reservation_info
-
 def parse_check_in(content: str) -> Optional[date]:
     patterns = [
         r'\*\*Check-in:\*\*\s*(.+)',
@@ -426,7 +372,7 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
         reservation_info['check_out'] = calculated_check_out
         logger.info(f"Calculated check-out date: {calculated_check_out}")
     
-    # If nights are missing but check-in and check-out are provided, calculate nights
+    # If nights are missing but  and check-out are provided, calculate nights
     if 'check_in' in reservation_info and 'check_out' in reservation_info and 'nights' not in reservation_info:
         calculated_nights = (reservation_info['check_out'] - reservation_info['check_in']).days
         reservation_info['nights'] = calculated_nights
@@ -436,45 +382,6 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     return reservation_info
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     logger.info("Sending prompt to AI model")
     api_key = os.environ.get("OPEN_ROUTER_API_KEY")
@@ -519,7 +426,7 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     
 
 def calculate_nights(check_in: date, check_out: date) -> int:
-    """Calculate the number of nights between check-in and check-out dates."""
+    """Calculate the number of nights between  and check-out dates."""
     return (check_out - check_in).days
 
 def transform_to_standard_format(email_body: str) -> str:
@@ -533,7 +440,7 @@ def transform_to_standard_format(email_body: str) -> str:
     {email_body}
     
     Standardized Format:
-    Check-in: [DATE]
+    : [DATE]
     Check-out: [DATE or null]
     Nights: [NUMBER or null]
     Adults: [NUMBER]
@@ -546,7 +453,7 @@ def transform_to_standard_format(email_body: str) -> str:
     3. For nights:
        - Use [NUMBER] if explicitly mentioned in the email.
        - Use 'null' if not mentioned and cannot be directly inferred from the email content.
-       - Do NOT calculate nights based on check-in and check-out dates.
+       - Do NOT calculate nights based on  and check-out dates.
     4. For dates, use the format YYYY-MM-DD.
     5. If the year is not specified, assume the current year unless it is after december 31st, in which case use the next year.
     6. For adults and children, use the numbers mentioned. If not specified, use 0.
@@ -579,18 +486,18 @@ def process_email_content(email_body: str) -> Dict[str, Any]:
         raise
 
         
-def calculate_free_cancellation_date(check_in_date):
-    logger.info(f"Calculating free cancellation date for check-in date: {check_in_date}")
-    if isinstance(check_in_date, str):
-        check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
+def calculate_free_cancellation_date(check_in):
+    logger.info(f"Calculating free cancellation date for  date: {check_in}")
+    if isinstance(check_in, str):
+        check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
     
-    free_cancellation_date = check_in_date - timedelta(days=20)
+    free_cancellation_date = check_in - timedelta(days=20)
     
-    if check_in_date.month == 11:
-        if check_in_date.day == 9:
-            free_cancellation_date = datetime(check_in_date.year, 10, 20).date()
-        elif check_in_date.day == 10:
-            free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
+    if check_in.month == 11:
+        if check_in.day == 9:
+            free_cancellation_date = datetime(check_in.year, 10, 20).date()
+        elif check_in.day == 10:
+            free_cancellation_date = datetime(check_in.year, 10, 21).date()
     
     logger.info(f"Calculated free cancellation date: {free_cancellation_date}")
     return free_cancellation_date
@@ -650,7 +557,7 @@ def is_greek(text):
     return result
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
-    logger.info(f"Scraping availability for check-in: {check_in}, check-out: {check_out}, adults: {adults}, children: {children}")
+    logger.info(f"Scraping availability for : {check_in}, check-out: {check_out}, adults: {adults}, children: {children}")
     base_url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
         base_url += f"&children={children}"
@@ -771,7 +678,7 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
         A new reservation request has been received from {customer_email}.
 
         Reservation details:
-        Check-in date: {reservation_info['check_in']}
+         date: {reservation_info['check_in']}
         Check-out date: {reservation_info.get('check_out', 'Not specified')}
         Number of nights: {reservation_info.get('nights', 'Not specified')}
         Number of adults: {reservation_info['adults']}
@@ -849,7 +756,7 @@ def send_partial_info_response(staff_email: str, customer_email: str, reservatio
         A new reservation request has been received from {customer_email}, but full availability information could not be provided.
 
         Reservation details:
-        Check-in date: {reservation_info['check_in']}
+         date: {reservation_info['check_in']}
         Check-out date: {reservation_info['check_out']}
         Number of adults: {reservation_info.get('adults', 'Not specified')}
         Number of children: {reservation_info.get('children', 'Not specified')}
