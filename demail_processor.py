@@ -123,6 +123,297 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
 
 
 
+def parse_date(date_string: str) -> Optional[date]:
+    date_formats = [
+        "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y",
+        "%B %d, %Y", "%d %B %Y", "%Y.%m.%d", "%d.%m.%Y",
+        "%b %d, %Y", "%d %b %Y", "%Y-%m-%dT%H:%M:%S",
+        "%d-%m-%y", "%y-%m-%d", "%d/%m/%y", "%y/%m/%d",
+        "%d %B, %Y", "%B %d %Y", "%d %b, %Y", "%b %d %Y",
+        "%d.%B.%Y", "%Y.%B.%d", "%d.%b.%Y", "%Y.%b.%d",
+        "%A, %B %d, %Y", "%A, %d %B %Y", "%a, %B %d, %Y", "%a, %d %B %Y",
+        "%Y년 %m월 %d일", "%d %m %Y", "%m/%d/%Y", "%Y/%d/%m"
+    ]
+    date_string = date_string.strip()
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(date_string, fmt).date()
+        except ValueError:
+            continue
+    
+    # Try to handle written-out months in various languages
+    months = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+        'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5, 'ιούνιος': 6,
+        'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9, 'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12,
+        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'ιουν': 6,
+        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
+    }
+    for month, month_num in months.items():
+        pattern = rf'(\d{{1,2}})\s*{month}\s*(\d{{2,4}})'
+        match = re.search(pattern, date_string, re.IGNORECASE)
+        if match:
+            day, year = match.groups()
+            if len(year) == 2:
+                year = f'20{year}'
+            return date(int(year), month_num, int(day))
+    
+    return None
+
+def parse_check_in(content: str) -> Optional[date]:
+    patterns = [
+        r'\*\*Check-in:\*\*\s*(.+)',
+        r'Check-in:\s*(.+)',
+        r'Check in:\s*(.+)',
+        r'Checkin:\s*(.+)',
+        r'Check-in date:\s*(.+)',
+        r'Arrival:\s*(.+)',
+        r'Arrival date:\s*(.+)',
+        r'Date of arrival:\s*(.+)',
+        r'Entering:\s*(.+)',
+        r'Start date:\s*(.+)',
+        r'Beginning of stay:\s*(.+)',
+        r'Commencement:\s*(.+)',
+        r'From:\s*(.+)',
+        r'Starting:\s*(.+)',
+        r'Ingress:\s*(.+)',
+        r'Entry date:\s*(.+)',
+        r'Date of entry:\s*(.+)',
+        r'Booking start:\s*(.+)',
+        r'Reservation begins:\s*(.+)',
+        r'Stay starts:\s*(.+)',
+        r'Lodging begins:\s*(.+)',
+        r'Accommodation start:\s*(.+)',
+        r'First day:\s*(.+)',
+        r'Initial date:\s*(.+)',
+        r'Commencing on:\s*(.+)',
+        r'ΗΜ\.ΑΦΙΞΗΣ:?\s*(.+)',  # Greek: Arrival date
+        r'ΑΦΙΞΗ:?\s*(.+)',  # Greek: Arrival
+        r'ΗΜΕΡΟΜΗΝΙΑ ΑΦΙΞΗΣ:?\s*(.+)',  # Greek: Date of arrival
+        r'ΕΝΑΡΞΗ ΔΙΑΜΟΝΗΣ:?\s*(.+)',  # Greek: Start of stay
+        r'ΑΠΟ:?\s*(.+)',  # Greek: From
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        if match:
+            date_str = match.group(1).strip()
+            parsed_date = parse_date(date_str)
+            if parsed_date:
+                return parsed_date
+    return None
+
+def parse_check_out(content: str) -> Optional[date]:
+    patterns = [
+        r'\*\*Check-out:\*\*\s*(.+)',
+        r'Check-out:\s*(.+)',
+        r'Check out:\s*(.+)',
+        r'Checkout:\s*(.+)',
+        r'Check-out date:\s*(.+)',
+        r'Departure:\s*(.+)',
+        r'Departure date:\s*(.+)',
+        r'Date of departure:\s*(.+)',
+        r'Leaving:\s*(.+)',
+        r'End date:\s*(.+)',
+        r'End of stay:\s*(.+)',
+        r'Conclusion:\s*(.+)',
+        r'To:\s*(.+)',
+        r'Ending:\s*(.+)',
+        r'Egress:\s*(.+)',
+        r'Exit date:\s*(.+)',
+        r'Date of exit:\s*(.+)',
+        r'Booking end:\s*(.+)',
+        r'Reservation ends:\s*(.+)',
+        r'Stay ends:\s*(.+)',
+        r'Lodging ends:\s*(.+)',
+        r'Accommodation end:\s*(.+)',
+        r'Last day:\s*(.+)',
+        r'Final date:\s*(.+)',
+        r'Concluding on:\s*(.+)',
+        r'ΗΜ\.ΑΝΑΧΩΡΗΣΗΣ:?\s*(.+)',  # Greek: Departure date
+        r'ΑΝΑΧΩΡΗΣΗ:?\s*(.+)',  # Greek: Departure
+        r'ΗΜΕΡΟΜΗΝΙΑ ΑΝΑΧΩΡΗΣΗΣ:?\s*(.+)',  # Greek: Date of departure
+        r'ΛΗΞΗ ΔΙΑΜΟΝΗΣ:?\s*(.+)',  # Greek: End of stay
+        r'ΕΩΣ:?\s*(.+)',  # Greek: Until
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        if match:
+            date_str = match.group(1).strip()
+            if date_str.lower() in ['null', 'none', 'n/a', '-', '']:
+                return None
+            parsed_date = parse_date(date_str)
+            if parsed_date:
+                return parsed_date
+    return None
+
+def parse_nights(content: str) -> Optional[int]:
+    patterns = [
+        r'\*\*Nights:\*\*\s*(\d+)',
+        r'Nights:\s*(\d+)',
+        r'Number of nights:\s*(\d+)',
+        r'Duration:\s*(\d+)\s*nights?',
+        r'Stay duration:\s*(\d+)\s*nights?',
+        r'Length of stay:\s*(\d+)\s*nights?',
+        r'Lodging duration:\s*(\d+)\s*nights?',
+        r'Total nights:\s*(\d+)',
+        r'Nights stayed:\s*(\d+)',
+        r'Overnight stays:\s*(\d+)',
+        r'Sleepovers:\s*(\d+)',
+        r'Booking duration:\s*(\d+)\s*nights?',
+        r'Reservation length:\s*(\d+)\s*nights?',
+        r'Period of stay:\s*(\d+)\s*nights?',
+        r'Accommodation period:\s*(\d+)\s*nights?',
+        r'Sojourn duration:\s*(\d+)\s*nights?',
+        r'Lodging period:\s*(\d+)\s*nights?',
+        r'Night count:\s*(\d+)',
+        r'Count of nights:\s*(\d+)',
+        r'Duration in nights:\s*(\d+)',
+        r'Stay length \(nights\):\s*(\d+)',
+        r'Nights reserved:\s*(\d+)',
+        r'Booked nights:\s*(\d+)',
+        r'ΝΥΧΤΕΣ:?\s*(\d+)',  # Greek: Nights
+        r'ΑΡΙΘΜΟΣ ΔΙΑΝΥΚΤΕΡΕΥΣΕΩΝ:?\s*(\d+)',  # Greek: Number of overnight stays
+        r'ΔΙΑΡΚΕΙΑ ΠΑΡΑΜΟΝΗΣ:?\s*(\d+)',  # Greek: Duration of stay
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+def parse_adults(content: str) -> int:
+    patterns = [
+        r'\*\*Adults:\*\*\s*(\d+)',
+        r'Adults:\s*(\d+)',
+        r'Number of adults:\s*(\d+)',
+        r'Adult guests:\s*(\d+)',
+        r'Adult occupants:\s*(\d+)',
+        r'Grown-ups:\s*(\d+)',
+        r'Adult travelers:\s*(\d+)',
+        r'Adult lodgers:\s*(\d+)',
+        r'Adult visitors:\s*(\d+)',
+        r'Adult residents:\s*(\d+)',
+        r'Mature guests:\s*(\d+)',
+        r'Adult count:\s*(\d+)',
+        r'Count of adults:\s*(\d+)',
+        r'Adult party size:\s*(\d+)',
+        r'Number of grown-ups:\s*(\d+)',
+        r'Adult group size:\s*(\d+)',
+        r'Adult headcount:\s*(\d+)',
+        r'Quantity of adults:\s*(\d+)',
+        r'Adult quota:\s*(\d+)',
+        r'Adult tally:\s*(\d+)',
+        r'Sum of adults:\s*(\d+)',
+        r'Total adults:\s*(\d+)',
+        r'ΕΝΗΛΙΚΕΣ:?\s*(\d+)',  # Greek: Adults
+        r'ΑΡΙΘΜΟΣ ΕΝΗΛΙΚΩΝ:?\s*(\d+)',  # Greek: Number of adults
+        r'ΑΤΟΜΑ \(ΕΝΗΛΙΚΕΣ\):?\s*(\d+)',  # Greek: Persons (Adults)
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return 0
+
+def parse_children(content: str) -> int:
+    patterns = [
+        r'\*\*Children:\*\*\s*(\d+)',
+        r'Children:\s*(\d+)',
+        r'Number of children:\s*(\d+)',
+        r'Child guests:\s*(\d+)',
+        r'Child occupants:\s*(\d+)',
+        r'Kids:\s*(\d+)',
+        r'Young guests:\s*(\d+)',
+        r'Minors:\s*(\d+)',
+        r'Underage guests:\s*(\d+)',
+        r'Juvenile travelers:\s*(\d+)',
+        r'Young visitors:\s*(\d+)',
+        r'Child lodgers:\s*(\d+)',
+        r'Children count:\s*(\d+)',
+        r'Count of children:\s*(\d+)',
+        r'Child party size:\s*(\d+)',
+        r'Number of kids:\s*(\d+)',
+        r'Young group size:\s*(\d+)',
+        r'Child headcount:\s*(\d+)',
+        r'Quantity of children:\s*(\d+)',
+        r'Children quota:\s*(\d+)',
+        r'Kids tally:\s*(\d+)',
+        r'Sum of children:\s*(\d+)',
+        r'Total children:\s*(\d+)',
+        r'ΠΑΙΔΙΑ:?\s*(\d+)',  # Greek: Children
+        r'ΑΡΙΘΜΟΣ ΠΑΙΔΙΩΝ:?\s*(\d+)',  # Greek: Number of children
+        r'ΑΤΟΜΑ \(ΠΑΙΔΙΑ\):?\s*(\d+)',  # Greek: Persons (Children)
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return 0
+
+def parse_room_type(content: str) -> Optional[str]:
+    patterns = [
+        r'\*\*Room Type:\*\*\s*(.+)',
+        r'Room Type:\s*(.+)',
+        r'Room:\s*(.+)',
+        r'Accommodation type:\s*(.+)',
+        r'Lodging type:\s*(.+)',
+        r'Type of room:\s*(.+)',
+        r'Room category:\s*(.+)',
+        r'Accommodation category:\s*(.+)',
+        r'Lodging category:\s*(.+)',
+        r'Room classification:\s*(.+)',
+        r'Accommodation classification:\s*(.+)',
+        r'Type of accommodation:\s*(.+)',
+        r'Room style:\s*(.+)',
+        r'Accommodation style:\s*(.+)',
+        r'Lodging style:\s*(.+)',
+        r'Room class:\s*(.+)',
+        r'Accommodation class:\s*(.+)',
+        r'Lodging class:\s*(.+)',
+        r'Room specification:\s*(.+)',
+        r'Accommodation specification:\s*(.+)',
+        r'Lodging specification:\s*(.+)',
+        r'ΤΥΠΟΣ ΔΩΜΑΤΙΟΥ:?\s*(.+)',  # Greek: Room Type
+        r'ΕΙΔΟΣ ΚΑΤΑΛΥΜΑΤΟΣ:?\s*(.+)',  # Greek: Type of Accommodation
+        r'ΚΑΤΗΓΟΡΙΑ ΔΩΜΑΤΙΟΥ:?\s*(.+)',  # Greek: Room Category
+        r'Unit type:\s*(.+)',
+        r'Apartment type:\s*(.+)',
+        r'Suite type:\s*(.+)',
+        r'Cabin type:\s*(.+)',
+        r'Bungalow type:\s*(.+)',
+        r'Villa type:\s*(.+)',
+        r'Cottage type:\s*(.+)',
+        r'Chalet type:\s*(.+)',
+        r'Tent type:\s*(.+)',
+        r'Dormitory type:\s*(.+)',
+        r'Hostel room type:\s*(.+)',
+        r'Bed type:\s*(.+)',
+        r'Room arrangement:\s*(.+)',
+        r'Sleeping arrangement:\s*(.+)',
+        r'Accommodation arrangement:\s*(.+)',
+        r'Room configuration:\s*(.+)',
+        r'Lodging configuration:\s*(.+)',
+        r'Room setup:\s*(.+)',
+        r'Accommodation setup:\s*(.+)',
+        r'Room layout:\s*(.+)',
+        r'Accommodation layout:\s*(.+)',
+        r'Room description:\s*(.+)',
+        r'Accommodation description:\s*(.+)',
+        r'Lodging description:\s*(.+)',
+        r'Room details:\s*(.+)',
+        r'Accommodation details:\s*(.+)',
+        r'Lodging details:\s*(.+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        if match:
+            room_type = match.group(1).strip()
+            if room_type.lower() in ['null', 'none', 'n/a', '-', '']:
+                return None
+            return room_type
+    return None
 
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Starting to parse standardized content")
@@ -131,61 +422,65 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     reservation_info = {}
     
     # Parse check-in date
-    check_in_match = re.search(r'Check-in:\s*(\d{4}-\d{2}-\d{2})', standardized_content)
-    if check_in_match:
-        reservation_info['check_in'] = datetime.strptime(check_in_match.group(1), "%Y-%m-%d").date()
-        logger.info(f"Parsed check-in date: {reservation_info['check_in']}")
+    check_in = parse_check_in(standardized_content)
+    if check_in:
+        reservation_info['check_in'] = check_in
+        logger.info(f"Parsed check-in date: {check_in}")
     else:
-        logger.error("Check-in date not found")
-
+        logger.warning("Check-in date not found or invalid")
+    
     # Parse check-out date
-    check_out_match = re.search(r'Check-out:\s*(\d{4}-\d{2}-\d{2}|null)', standardized_content)
-    if check_out_match and check_out_match.group(1) != 'null':
-        reservation_info['check_out'] = datetime.strptime(check_out_match.group(1), "%Y-%m-%d").date()
-        logger.info(f"Parsed check-out date: {reservation_info['check_out']}")
+    check_out = parse_check_out(standardized_content)
+    if check_out:
+        reservation_info['check_out'] = check_out
+        logger.info(f"Parsed check-out date: {check_out}")
     else:
-        reservation_info['check_out'] = None
-        logger.info("Check-out date is null or not found")
-
+        logger.info("Check-out date not found or set to null")
+    
     # Parse nights
-    nights_match = re.search(r'Nights:\s*(\d+|null)', standardized_content)
-    if nights_match and nights_match.group(1) != 'null':
-        reservation_info['nights'] = int(nights_match.group(1))
-        logger.info(f"Parsed nights: {reservation_info['nights']}")
+    nights = parse_nights(standardized_content)
+    if nights is not None:
+        reservation_info['nights'] = nights
+        logger.info(f"Parsed number of nights: {nights}")
     else:
-        reservation_info['nights'] = None
-        logger.info("Nights is null or not found")
-
+        logger.info("Number of nights not found")
+    
     # Parse adults
-    adults_match = re.search(r'Adults:\s*(\d+)', standardized_content)
-    if adults_match:
-        reservation_info['adults'] = int(adults_match.group(1))
-        logger.info(f"Parsed adults: {reservation_info['adults']}")
-    else:
-        reservation_info['adults'] = 0
-        logger.error("Number of adults not found, defaulting to 0")
-
+    adults = parse_adults(standardized_content)
+    reservation_info['adults'] = adults
+    logger.info(f"Parsed number of adults: {adults}")
+    
     # Parse children
-    children_match = re.search(r'Children:\s*(\d+)', standardized_content)
-    if children_match:
-        reservation_info['children'] = int(children_match.group(1))
-        logger.info(f"Parsed children: {reservation_info['children']}")
-    else:
-        reservation_info['children'] = 0
-        logger.error("Number of children not found, defaulting to 0")
-
+    children = parse_children(standardized_content)
+    reservation_info['children'] = children
+    logger.info(f"Parsed number of children: {children}")
+    
     # Parse room type
-    room_type_match = re.search(r'Room Type:\s*(.+)', standardized_content)
-    if room_type_match and room_type_match.group(1).lower() != 'null':
-        reservation_info['room_type'] = room_type_match.group(1).strip()
-        logger.info(f"Parsed room type: {reservation_info['room_type']}")
+    room_type = parse_room_type(standardized_content)
+    if room_type:
+        reservation_info['room_type'] = room_type
+        logger.info(f"Parsed room type: {room_type}")
     else:
-        reservation_info['room_type'] = None
-        logger.info("Room type is null or not found")
-
+        logger.info("Room type not found or set to null")
+    
+    # Calculate total guests
+    reservation_info['total_guests'] = adults + children
+    logger.info(f"Calculated total guests: {reservation_info['total_guests']}")
+    
+    # If check-out is missing but nights are provided, calculate check-out
+    if 'check_in' in reservation_info and 'nights' in reservation_info and 'check_out' not in reservation_info:
+        calculated_check_out = reservation_info['check_in'] + timedelta(days=reservation_info['nights'])
+        reservation_info['check_out'] = calculated_check_out
+        logger.info(f"Calculated check-out date: {calculated_check_out}")
+    
+    # If nights are missing but check-in and check-out are provided, calculate nights
+    if 'check_in' in reservation_info and 'check_out' in reservation_info and 'nights' not in reservation_info:
+        calculated_nights = (reservation_info['check_out'] - reservation_info['check_in']).days
+        reservation_info['nights'] = calculated_nights
+        logger.info(f"Calculated number of nights: {calculated_nights}")
+    
     logger.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
-
 
 
 
