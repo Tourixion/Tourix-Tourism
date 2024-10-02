@@ -1023,8 +1023,8 @@ def parse_reservation_request(email_body: str) -> Dict[str, Any]:
     if language == 'el':
         reservation_info = parse_greek_request(normalized_text)
     else:
-        # Try Greeklish parsing first, then fall back to English if it fails
-        reservation_info = parse_greeklish_request(normalized_text) or parse_english_request(normalized_text)
+        # Try English parsing first, then fall back to Greeklish if it fails
+        reservation_info = parse_english_request(normalized_text) or _greeklish_request(normalized_text)
     
     # Calculate check-out date if not provided
     if 'check_in' in reservation_info and 'check_out' not in reservation_info and 'nights' in reservation_info:
