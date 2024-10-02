@@ -67,59 +67,46 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     logger.info(f"Initial reservation info: {reservation_info}")
     
     try:
-        if 'check-in' in reservation_info:
-            logger.info(f"Check-in value: {reservation_info['check-in']}, Type: {type(reservation_info['check-in'])}")
-            if isinstance(reservation_info['check-in'], str):
-                logger.info(f"Attempting to parse check-in string: {reservation_info['check-in']}")
-                try:
-                    reservation_info['check_in'] = datetime.strptime(reservation_info['check-in'], "%Y-%m-%d").date()
-                    logger.info(f"Successfully parsed check-in date: {reservation_info['check_in']}")
-                except ValueError as e:
-                    logger.error(f"Failed to parse check-in date: {reservation_info['check-in']}. Error: {str(e)}")
-                    reservation_info['error'] = f"Invalid check-in date format: {reservation_info['check-in']}"
-                    return reservation_info
-            
+        if 'check_in' in reservation_info and reservation_info['check_in']:
             check_in = reservation_info['check_in']
-            logger.info(f"Final check-in date: {check_in}")
+            logger.info(f"Check-in date: {check_in}")
             
-            if 'check-out' in reservation_info:
-                logger.info(f"Check-out value: {reservation_info['check-out']}, Type: {type(reservation_info['check-out'])}")
-                if isinstance(reservation_info['check-out'], str):
-                    logger.info(f"Attempting to parse check-out string: {reservation_info['check-out']}")
-                    try:
-                        reservation_info['check_out'] = datetime.strptime(reservation_info['check-out'], "%Y-%m-%d").date()
-                        logger.info(f"Successfully parsed check-out date: {reservation_info['check_out']}")
-                    except ValueError as e:
-                        logger.error(f"Failed to parse check-out date: {reservation_info['check-out']}. Error: {str(e)}")
-                        reservation_info['error'] = f"Invalid check-out date format: {reservation_info['check-out']}"
-                        return reservation_info
-                
+            if 'check_out' in reservation_info and reservation_info['check_out']:
                 check_out = reservation_info['check_out']
-                logger.info(f"Final check-out date: {check_out}")
+                logger.info(f"Check-out date: {check_out}")
                 nights = (check_out - check_in).days
                 reservation_info['nights'] = nights
                 logger.info(f"Calculated number of nights: {nights}")
-            
-            elif 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
+            elif 'nights' in reservation_info and reservation_info['nights']:
                 nights = reservation_info['nights']
                 check_out = check_in + timedelta(days=nights)
                 reservation_info['check_out'] = check_out
                 logger.info(f"Calculated check-out date: {check_out}")
-            
             else:
-                logger.warning("Check-out date not found and nights not specified. Assuming 1 night stay.")
-                reservation_info['check_out'] = check_in + timedelta(days=1)
-                reservation_info['nights'] = 1
-        
+                logger.warning("Neither check-out date nor number of nights provided. Unable to determine stay duration.")
+                reservation_info['check_out'] = None
+                reservation_info['nights'] = None
         else:
             logger.error("Check-in date not found in reservation info")
             reservation_info['error'] = "Missing check-in date"
         
         # Additional validation
-        if 'check_in' in reservation_info and 'check_out' in reservation_info:
+        if 'check_in' in reservation_info and reservation_info['check_in'] and \
+           'check_out' in reservation_info and reservation_info['check_out']:
             if reservation_info['check_out'] <= reservation_info['check_in']:
                 logger.error("Check-out date is not after check-in date. This is invalid.")
                 reservation_info['error'] = "Invalid date range: Check-out must be after check-in."
+        
+        # Ensure adults and children are integers
+        for key in ['adults', 'children']:
+            if key in reservation_info:
+                try:
+                    reservation_info[key] = int(reservation_info[key])
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid value for {key}: {reservation_info[key]}. Setting to 0.")
+                    reservation_info[key] = 0
+            else:
+                reservation_info[key] = 0
         
         logger.info(f"Final post-processed reservation info: {reservation_info}")
     
@@ -128,7 +115,6 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
         reservation_info['error'] = f"Error in processing: {str(e)}"
     
     return reservation_info
-
 
 
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
@@ -242,25 +228,27 @@ def transform_to_standard_format(email_body: str) -> str:
     
     Standardized Format:
     Check-in: [DATE]
-    Check-out: [DATE]
+    Check-out: [DATE or null]
+    Nights: [NUMBER or null]
     Adults: [NUMBER]
     Children: [NUMBER]
-    Room Type: [TYPE]
+    Room Type: [TYPE or null]
     
     Please follow these guidelines carefully:
     1. Fill in the [PLACEHOLDERS] with the appropriate information from the email.
-    2. If any information is missing, leave the placeholder empty.
-    3. For dates in the format DD/MM (e.g., 3/10, 05/10), interpret them as follows:
-       - Use the format YYYY-MM-DD in your output
-       - Assume the current year ({current_year}) unless the date has already passed, in which case use the next year
-       - Disregard any mentioned day of the week and focus solely on the numeric date
-    4. Do not calculate or include the number of nights. This will be calculated separately.
-    5. Pay special attention to date formats in different languages.
-    6. Always include the full 4-digit year in your output dates.
+    2. For check-out, use [DATE] if explicitly mentioned, otherwise use 'null'.
+    3. For nights:
+       - Use [NUMBER] if explicitly mentioned in the email.
+       - Use 'null' if not mentioned and cannot be directly inferred from the email content.
+       - Do NOT calculate nights based on check-in and check-out dates.
+    4. For dates, use the format YYYY-MM-DD.
+    5. If the year is not specified, assume the current year ({current_year}) unless the date has already passed, in which case use the next year.
+    6. For adults and children, use the numbers mentioned. If not specified, use 0.
+    7. If room type is not specified, use 'null'.
 
     Current date for reference: {current_date.strftime("%Y-%m-%d")}
 
-    Please provide your standardized output, followed by a brief explanation of how you interpreted the dates and any assumptions you made.
+    Please provide your standardized output, followed by a brief explanation of how you interpreted the information and any assumptions you made.
     """
     
     try:
@@ -270,7 +258,6 @@ def transform_to_standard_format(email_body: str) -> str:
     except Exception as e:
         logger.error(f"Error during email transformation: {str(e)}")
         raise
-
 
 def process_email_content(email_body: str) -> Dict[str, Any]:
     logger.info("Processing email content")
