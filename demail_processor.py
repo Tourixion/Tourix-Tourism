@@ -25,8 +25,21 @@ from datetime import datetime, timedelta, date
 import re
 from transliterate import detect_language as transliterate_detect_language, translit
 import dateparser
+from dotenv import load_dotenv
 
 
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Set up Open Router API key
+OPEN_ROUTER_API_KEY = os.getenv("OPEN_ROUTER_API_KEY")
+
+if not OPEN_ROUTER_API_KEY:
+    logging.error("OPEN_ROUTER_API_KEY is not set in the environment variables")
+    raise ValueError("OPEN_ROUTER_API_KEY is missing")
+
+OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
