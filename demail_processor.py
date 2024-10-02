@@ -115,45 +115,6 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     
     return reservation_info
 
-def parse_date(date_string: str) -> Optional[date]:
-    date_formats = [
-        "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y",
-        "%B %d, %Y", "%d %B %Y", "%Y.%m.%d", "%d.%m.%Y",
-        "%b %d, %Y", "%d %b %Y", "%Y-%m-%dT%H:%M:%S",
-        "%d-%m-%y", "%y-%m-%d", "%d/%m/%y", "%y/%m/%d",
-        "%d %B, %Y", "%B %d %Y", "%d %b, %Y", "%b %d %Y",
-        "%d.%B.%Y", "%Y.%B.%d", "%d.%b.%Y", "%Y.%b.%d",
-        "%A, %B %d, %Y", "%A, %d %B %Y", "%a, %B %d, %Y", "%a, %d %B %Y",
-        "%Y년 %m월 %d일", "%d %m %Y", "%m/%d/%Y", "%Y/%d/%m"
-    ]
-    date_string = date_string.strip()
-    for fmt in date_formats:
-        try:
-            return datetime.strptime(date_string, fmt).date()
-        except ValueError:
-            continue
-    
-    # Try to handle written-out months in various languages
-    months = {
-        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
-        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12,
-        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
-        'ιανουάριος': 1, 'φεβρουάριος': 2, 'μάρτιος': 3, 'απρίλιος': 4, 'μάιος': 5, 'ιούνιος': 6,
-        'ιούλιος': 7, 'αύγουστος': 8, 'σεπτέμβριος': 9, 'οκτώβριος': 10, 'νοέμβριος': 11, 'δεκέμβριος': 12,
-        'ιαν': 1, 'φεβ': 2, 'μαρ': 3, 'απρ': 4, 'μαϊ': 5, 'ιουν': 6,
-        'ιουλ': 7, 'αυγ': 8, 'σεπ': 9, 'οκτ': 10, 'νοε': 11, 'δεκ': 12
-    }
-    for month, month_num in months.items():
-        pattern = rf'(\d{{1,2}})\s*{month}\s*(\d{{2,4}})'
-        match = re.search(pattern, date_string, re.IGNORECASE)
-        if match:
-            day, year = match.groups()
-            if len(year) == 2:
-                year = f'20{year}'
-            return date(int(year), month_num, int(day))
-    
-    return None
-
 def parse_check_in(content: str) -> Optional[date]:
     patterns = [
         r'\*\*Check-in:\*\*\s*(.+)',
