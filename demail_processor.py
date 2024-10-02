@@ -138,6 +138,9 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
 
 def parse_check_in(content: str) -> Optional[date]:
     patterns = [
+        r': (\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
+        r'\*\*Check-in:\*\*\s*(\d{4}-\d{2}-\d{2})',
+        r'Check-in:\s*(\d{4}-\d{2}-\d{2})',
         r'\*\*Check-in:\*\*\s*(.+)',
         r'Check-in:\s*(.+)',
         r'Check in:\s*(.+)',
