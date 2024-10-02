@@ -70,12 +70,12 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
             key = key.strip().lower().replace(' ', '_')
             value = value.strip()
             if value and value != '[]':
-                if key in ['check_in', 'check_out']:
+                if key in ['check-in', 'check_in', 'check-out', 'check_out']:
                     try:
-                        reservation_info[key] = datetime.strptime(value, "%Y-%m-%d").date()
+                        reservation_info[key.replace('-', '_')] = datetime.strptime(value, "%Y-%m-%d").date()
                     except ValueError:
                         logger.warning(f"Failed to parse date for {key}: {value}")
-                        reservation_info[key] = value
+                        reservation_info[key.replace('-', '_')] = value
                 elif key in ['adults', 'children', 'nights']:
                     try:
                         reservation_info[key] = int(value)
@@ -94,6 +94,7 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
             check_in = reservation_info['check_in']
             if isinstance(check_in, str):
                 check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+            reservation_info['check_in'] = check_in
             
             if 'nights' in reservation_info:
                 nights = int(reservation_info['nights'])
@@ -107,6 +108,7 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
                 nights = (check_out - check_in).days
                 reservation_info['nights'] = nights
                 logger.info(f"Calculated number of nights: {nights}")
+            logger.info(f"Processed reservation info: {reservation_info}")
         else:
             logger.warning("Check-in date not found in reservation info")
     except Exception as e:
@@ -507,13 +509,6 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
         logger.info("Processing email content")
         reservation_info = process_email_content(email_body)
         logger.info(f"Processed reservation info: {reservation_info}")
-        
-        # Ensure check-in date is a date object
-        if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], str):
-            try:
-                reservation_info['check_in'] = datetime.strptime(reservation_info['check_in'], "%Y-%m-%d").date()
-            except ValueError:
-                logger.error(f"Invalid check-in date format: {reservation_info['check_in']}")
     except Exception as e:
         logger.error(f"Error during email processing: {str(e)}")
         send_error_notification(email_body, {}, email_msg)
@@ -521,14 +516,20 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
     
     staff_email = os.getenv('STAFF_EMAIL')
     
-    if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
-        logger.info("Valid check-in date found, proceeding to web scraping")
+    if 'check_in' in reservation_info and (isinstance(reservation_info['check_in'], date) or isinstance(reservation_info['check_in'], str)):
+        logger.info("Valid check-in data found, proceeding to web scraping")
         try:
+            check_in = reservation_info['check_in']
+            if isinstance(check_in, str):
+                check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+            
             # Use check_out if available, otherwise calculate it
-            check_out = reservation_info.get('check_out', reservation_info['check_in'] + timedelta(days=int(reservation_info.get('nights', 1))))
+            check_out = reservation_info.get('check_out', check_in + timedelta(days=int(reservation_info.get('nights', 1))))
+            if isinstance(check_out, str):
+                check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
             
             availability_data = scrape_thekokoon_availability(
-                reservation_info['check_in'],
+                check_in,
                 check_out,
                 reservation_info.get('adults', 2),
                 reservation_info.get('children', 0)
