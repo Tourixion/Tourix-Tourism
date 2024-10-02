@@ -4,6 +4,7 @@ import re
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, date
 import time
+import traceback
 
 import imaplib
 import smtplib
@@ -23,40 +24,45 @@ from dateutil import parser as date_parser
 import dateparser
 from transliterate import detect_language as transliterate_detect_language
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Set up Open Router API key
 OPEN_ROUTER_API_KEY = os.getenv("OPEN_ROUTER_API_KEY")
 
 if not OPEN_ROUTER_API_KEY:
-    logging.error("OPEN_ROUTER_API_KEY is not set in the environment variables")
+    logger.error("OPEN_ROUTER_API_KEY is not set in the environment variables")
     raise ValueError("OPEN_ROUTER_API_KEY is missing")
 
 OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 def normalize_text(text: str) -> str:
+    logger.debug(f"Normalizing text: {text[:50]}...")
     return text.lower()
 
 def get_staff_email():
-    return os.environ['STAFF_EMAIL']
+    staff_email = os.environ['STAFF_EMAIL']
+    logger.info(f"Retrieved staff email: {staff_email}")
+    return staff_email
 
 def detect_language(text: str) -> str:
     lang = transliterate_detect_language(text)
+    logger.info(f"Detected language: {'Greek' if lang == 'el' else 'English'}")
     return 'el' if lang == 'el' else 'en'
 
 def clean_email_body(email_body: str) -> str:
+    logger.info("Cleaning email body")
     email_body = re.sub(r'---------- Forwarded message ---------\n.*?\n\n', '', email_body, flags=re.DOTALL)
     email_body = re.sub(r'^(From|Date|Subject|To):.*$', '', email_body, flags=re.MULTILINE)
     email_body = re.sub(r'^[A-Za-z-]+:\s.*$', '', email_body, flags=re.MULTILINE)
     email_body = re.sub(r'\n\s*\n', '\n\n', email_body)
     email_body = email_body.strip()
-    logging.info("Cleaned email body:")
-    logging.info(email_body)
+    logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
     return email_body
 
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
+    logger.info("Parsing standardized content")
     reservation_info = {}
     for line in standardized_content.split('\n'):
         if ':' in line:
@@ -70,11 +76,14 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
                     reservation_info[key] = int(value)
                 else:
                     reservation_info[key] = value
+    logger.info(f"Parsed reservation info: {reservation_info}")
     return reservation_info
 
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
+    logger.info("Sending prompt to AI model")
     api_key = os.environ.get("OPEN_ROUTER_API_KEY")
     if not api_key:
+        logger.error("OPEN_ROUTER_API_KEY is not set in the environment variables")
         raise ValueError("OPEN_ROUTER_API_KEY is not set in the environment variables")
 
     headers = {
@@ -93,6 +102,7 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
 
     for attempt in range(max_retries):
         try:
+            logger.info(f"Attempt {attempt + 1} to send request to AI model")
             response = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
@@ -101,15 +111,18 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
             )
             response.raise_for_status()
             result = response.json()
+            logger.info("Successfully received response from AI model")
             return result['choices'][0]['message']['content'].strip()
         except requests.RequestException as e:
-            logging.error(f"Attempt {attempt + 1} failed: Error in AI model communication: {str(e)}")
+            logger.error(f"Attempt {attempt + 1} failed: Error in AI model communication: {str(e)}")
             if attempt == max_retries - 1:
                 raise
 
+    logger.error("Max retries reached for AI model communication")
     raise Exception("Max retries reached for AI model communication")
     
 def transform_to_standard_format(email_body: str) -> str:
+    logger.info("Transforming email content to standard format")
     prompt = f"""
     Transform the following email content into a standardized format:
     
@@ -129,23 +142,25 @@ def transform_to_standard_format(email_body: str) -> str:
     
     try:
         transformed_content = send_to_ai_model(prompt)
-        logging.info(f"Standardized content: {transformed_content}")
+        logger.info(f"Standardized content: {transformed_content}")
         return transformed_content
     except Exception as e:
-        logging.error(f"Error during email transformation: {str(e)}")
+        logger.error(f"Error during email transformation: {str(e)}")
         raise
 
-# This function can be called from your main process_email function
 def process_email_content(email_body: str) -> Dict[str, Any]:
+    logger.info("Processing email content")
     try:
         standardized_content = transform_to_standard_format(email_body)
         reservation_info = parse_standardized_content(standardized_content)
+        logger.info(f"Processed email content: {reservation_info}")
         return reservation_info
     except Exception as e:
-        logging.error(f"Error processing email content: {str(e)}")
+        logger.error(f"Error processing email content: {str(e)}")
         raise
         
 def calculate_free_cancellation_date(check_in_date):
+    logger.info(f"Calculating free cancellation date for check-in date: {check_in_date}")
     if isinstance(check_in_date, str):
         check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
     
@@ -157,25 +172,27 @@ def calculate_free_cancellation_date(check_in_date):
         elif check_in_date.day == 10:
             free_cancellation_date = datetime(check_in_date.year, 10, 21).date()
     
+    logger.info(f"Calculated free cancellation date: {free_cancellation_date}")
     return free_cancellation_date
 
 def connect_to_imap(email_address, password, imap_server, imap_port=993):
-    logging.info(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
+    logger.info(f"Attempting to connect to IMAP server: {imap_server} on port {imap_port}")
     
     try:
         context = ssl.create_default_context()
-        logging.info("Creating IMAP4_SSL client")
+        logger.info("Creating IMAP4_SSL client")
         imap = imaplib.IMAP4_SSL(imap_server, imap_port, ssl_context=context)
         
-        logging.info("Attempting to log in")
+        logger.info("Attempting to log in")
         imap.login(email_address, password)
-        logging.info("Successfully logged in to IMAP server")
+        logger.info("Successfully logged in to IMAP server")
         return imap
     except Exception as e:
-        logging.error(f"Unexpected error: {type(e).__name__}: {e}")
+        logger.error(f"Unexpected error: {type(e).__name__}: {e}")
         raise
 
 def get_email_content(msg):
+    logger.info("Retrieving email content")
     subject = decode_header(msg["Subject"])[0][0]
     if isinstance(subject, bytes):
         subject = subject.decode()
@@ -183,27 +200,37 @@ def get_email_content(msg):
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() == "text/plain":
-                return part.get_payload(decode=True).decode()
+                content = part.get_payload(decode=True).decode()
+                logger.info(f"Retrieved multipart email content (first 100 chars): {content[:100]}...")
+                return content
     else:
-        return msg.get_payload(decode=True).decode()
+        content = msg.get_payload(decode=True).decode()
+        logger.info(f"Retrieved simple email content (first 100 chars): {content[:100]}...")
+        return content
 
 def parse_numeric_fields(reservation_info):
+    logger.info("Parsing numeric fields in reservation info")
     for num_key in ['adults', 'children', 'nights']:
         if num_key in reservation_info:
             try:
                 reservation_info[num_key] = int(reservation_info[num_key])
             except ValueError:
-                logging.warning(f"Failed to parse {num_key} as integer")
+                logger.warning(f"Failed to parse {num_key} as integer")
                 del reservation_info[num_key]
     
     if 'adults' not in reservation_info:
+        logger.info("Setting default value for 'adults' to 2")
         reservation_info['adults'] = 2
+    logger.info(f"Parsed reservation info: {reservation_info}")
     return reservation_info
 
 def is_greek(text):
-    return bool(re.search(r'[\u0370-\u03FF]', text))
+    result = bool(re.search(r'[\u0370-\u03FF]', text))
+    logger.info(f"Text language detection: {'Greek' if result else 'Not Greek'}")
+    return result
 
 def scrape_thekokoon_availability(check_in, check_out, adults, children):
+    logger.info(f"Scraping availability for check-in: {check_in}, check-out: {check_out}, adults: {adults}, children: {children}")
     base_url = f"https://thekokoonvolos.reserve-online.net/?checkin={check_in.strftime('%Y-%m-%d')}&rooms=1&nights={(check_out - check_in).days}&adults={adults}&src=107"
     if children > 0:
         base_url += f"&children={children}"
@@ -216,24 +243,24 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
         
         for currency in currencies:
             url = f"{base_url}&currency={currency}"
-            logging.info(f"Attempting to scrape availability data for {currency} from {url}")
+            logger.info(f"Attempting to scrape availability data for {currency} from {url}")
             
             try:
                 page = browser.new_page()
                 page.set_default_timeout(60000)  # Increase timeout to 60 seconds
                 
-                logging.info(f"Navigating to {url}")
+                logger.info(f"Navigating to {url}")
                 response = page.goto(url)
-                logging.info(f"Navigation complete. Status: {response.status}")
+                logger.info(f"Navigation complete. Status: {response.status}")
                 
-                logging.info("Waiting for page to load completely")
+                logger.info("Waiting for page to load completely")
                 page.wait_for_load_state('networkidle')
                 
-                logging.info("Checking for room name and price elements")
+                logger.info("Checking for room name and price elements")
                 room_names = page.query_selector_all('td.name')
                 room_prices = page.query_selector_all('td.price')
                 
-                logging.info(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
+                logger.info(f"Found {len(room_names)} room names and {len(room_prices)} room prices")
                 
                 availability_data = []
                 for i in range(len(room_names)):
@@ -259,20 +286,20 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
                         }
                         
                         availability_data.append(room_data)
-                        logging.info(f"Scraped data for room: {room_type}")
+                        logger.info(f"Scraped data for room: {room_type}")
                         for price in prices:
-                            logging.info(f"  {price['cancellation_policy']} Price: {price[f'price_{currency.lower()}']:.2f}")
+                            logger.info(f"  {price['cancellation_policy']} Price: {price[f'price_{currency.lower()}']:.2f}")
                     except Exception as e:
-                        logging.error(f"Error processing room {i + 1}:")
-                        logging.error(str(e))
+                        logger.error(f"Error processing room {i + 1}:")
+                        logger.error(str(e))
                 
                 all_availability_data[currency] = availability_data
-                logging.info(f"Scraped availability data for {currency}: {availability_data}")
+                logger.info(f"Scraped availability data for {currency}: {availability_data}")
                 
             except PlaywrightTimeoutError as e:
-                logging.error(f"Timeout error for {currency}: {e}")
+                logger.error(f"Timeout error for {currency}: {e}")
             except Exception as e:
-                logging.error(f"Unexpected error for {currency}: {type(e).__name__}: {e}")
+                logger.error(f"Unexpected error for {currency}: {type(e).__name__}: {e}")
             finally:
                 page.close()
         
@@ -281,6 +308,7 @@ def scrape_thekokoon_availability(check_in, check_out, adults, children):
     return all_availability_data
 
 def send_email(to_address: str, subject: str, body: str) -> None:
+    logger.info(f"Sending email to {to_address}")
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
     sender_email = os.environ['EMAIL_ADDRESS']
@@ -296,12 +324,13 @@ def send_email(to_address: str, subject: str, body: str) -> None:
         with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
             server.login(sender_email, password)
             server.send_message(message)
-        logging.info(f"Email sent successfully to {to_address}")
+        logger.info(f"Email sent successfully to {to_address}")
     except Exception as e:
-        logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
+        logger.error(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
 def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: Dict[str, List[Dict[str, Any]]], is_greek_email: bool, original_email) -> None:
+    logger.info(f"Sending autoresponse to staff email: {staff_email}")
     if is_greek_email:
         subject = f"Νέο Αίτημα Κράτησης - {customer_email}"
         body = f"""
@@ -341,8 +370,12 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
                     body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
     
     body += "\nPlease process this request and respond to the customer as appropriate."
+    
+    logger.info("Autoresponse content prepared")
+    send_email_with_original(staff_email, subject, body, original_email)
 
 def send_email_with_original(to_address: str, subject: str, body: str, original_email) -> None:
+    logger.info(f"Sending email with original content to {to_address}")
     smtp_server = "mail.kokoonvolos.gr"
     smtp_port = 465  # SSL port
     sender_email = os.environ['EMAIL_ADDRESS']
@@ -368,12 +401,13 @@ def send_email_with_original(to_address: str, subject: str, body: str, original_
         with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
             server.login(sender_email, password)
             server.send_message(message)
-        logging.info(f"Email sent successfully to {to_address}")
+        logger.info(f"Email with original content sent successfully to {to_address}")
     except Exception as e:
-        logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
+        logger.error(f"Failed to send email with original content to {to_address}. Error: {str(e)}")
         raise
 
 def send_partial_info_response(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], is_greek_email: bool, original_email) -> None:
+    logger.info(f"Sending partial info response to staff email: {staff_email}")
     if is_greek_email:
         subject = f"Νέο Αίτημα Κράτησης (Μερικές Πληροφορίες) - {customer_email}"
         body = f"""
@@ -401,9 +435,11 @@ def send_partial_info_response(staff_email: str, customer_email: str, reservatio
         Please process this request manually and contact the customer as soon as possible.
         """
     
+    logger.info("Partial info response content prepared")
     send_email_with_original(staff_email, subject, body, original_email)
 
 def send_error_notification(email_body: str, reservation_info: Dict[str, Any], original_email) -> None:
+    logger.info("Sending error notification")
     staff_email = get_staff_email()
     subject = "Error Processing Reservation Request"
     body = f"""
@@ -417,25 +453,28 @@ def send_error_notification(email_body: str, reservation_info: Dict[str, Any], o
 
     Please review this request manually and respond to the customer as appropriate.
     """
+    logger.info("Error notification content prepared")
     send_email_with_original(staff_email, subject, body, original_email)
 
 def process_email(email_msg: email.message.Message, sender_address: str) -> None:
-    logging.info("Starting to process email")
+    logger.info(f"Starting to process email from {sender_address}")
     email_body = get_email_content(email_msg)
     
     try:
+        logger.info("Transforming email content to standard format")
         standardized_content = transform_to_standard_format(email_body)
-        logging.info(f"Standardized content: {standardized_content}")
+        logger.info(f"Standardized content: {standardized_content}")
         reservation_info = parse_standardized_content(standardized_content)
+        logger.info(f"Parsed reservation info: {reservation_info}")
     except Exception as e:
-        logging.error(f"Error during email transformation or parsing: {str(e)}")
+        logger.error(f"Error during email transformation or parsing: {str(e)}")
         send_error_notification(email_body, {}, email_msg)
         return
     
     staff_email = os.getenv('STAFF_EMAIL')
     
     if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        logging.info("Reservation dates found, proceeding to web scraping")
+        logger.info("Reservation dates found, proceeding to web scraping")
         try:
             availability_data = scrape_thekokoon_availability(
                 reservation_info['check_in'],
@@ -443,33 +482,33 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
                 reservation_info.get('adults', 2),
                 reservation_info.get('children', 0)
             )
-            logging.info(f"Web scraping result: {availability_data}")
+            logger.info(f"Web scraping result: {availability_data}")
             
             if availability_data:
-                logging.info("Availability data found, sending detailed response to staff")
+                logger.info("Availability data found, sending detailed response to staff")
                 send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek(email_body), email_msg)
             else:
-                logging.info("No availability data found, sending partial information response to staff")
+                logger.info("No availability data found, sending partial information response to staff")
                 send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
         except Exception as e:
-            logging.error(f"Error during web scraping: {str(e)}")
+            logger.error(f"Error during web scraping: {str(e)}")
             send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
     else:
-        logging.warning("Failed to parse reservation dates. Sending error notification to staff.")
+        logger.warning("Failed to parse reservation dates. Sending error notification to staff.")
         send_error_notification(email_body, reservation_info, email_msg)
     
-    logging.info("Email processing completed")
+    logger.info("Email processing completed")
 
 def main():
-    logging.info("Starting email processor script")
+    logger.info("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
     password = os.environ['EMAIL_PASSWORD']
     imap_server = 'mail.kokoonvolos.gr'
     imap_port = 993
 
-    logging.info(f"Email Address: {email_address}")
-    logging.info(f"IMAP Server: {imap_server}")
-    logging.info(f"IMAP Port: {imap_port}")
+    logger.info(f"Email Address: {email_address}")
+    logger.info(f"IMAP Server: {imap_server}")
+    logger.info(f"IMAP Port: {imap_port}")
 
     try:
         imap = connect_to_imap(email_address, password, imap_server, imap_port)
@@ -477,27 +516,27 @@ def main():
 
         _, message_numbers = imap.search(None, "UNSEEN")
         if not message_numbers[0]:
-            logging.info("No new messages found.")
+            logger.info("No new messages found.")
         else:
             for num in message_numbers[0].split():
-                logging.info(f"Processing message number: {num}")
+                logger.info(f"Processing message number: {num}")
                 _, msg = imap.fetch(num, "(RFC822)")
                 email_msg = email.message_from_bytes(msg[0][1])
                 
                 sender_address = email.utils.parseaddr(email_msg['From'])[1]
-                logging.info(f"Sender: {sender_address}")
+                logger.info(f"Sender: {sender_address}")
                 
                 email_body = get_email_content(email_msg)
-                logging.info("Email body retrieved")
+                logger.info("Email body retrieved")
                 
                 process_email(email_msg, sender_address)
-                logging.info(f"Finished processing message number: {num}")
+                logger.info(f"Finished processing message number: {num}")
 
         imap.logout()
-        logging.info("Email processing completed successfully")
+        logger.info("Email processing completed successfully")
     except Exception as e:
-        logging.error(f"An error occurred: {str(e)}")
-        logging.error(traceback.format_exc())
+        logger.error(f"An error occurred: {str(e)}")
+        logger.error(traceback.format_exc())
         raise
 
 if __name__ == "__main__":
