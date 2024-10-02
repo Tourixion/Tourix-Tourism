@@ -116,25 +116,13 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     
     return reservation_info
 
-def parse_date(date_string: str) -> Optional[date]:
-    logger.info(f"Parsing date string: {date_string}")
-    if date_string.lower() == 'null':
-        return None
-    try:
-        return datetime.strptime(date_string.strip(), "%Y-%m-%d").date()
-    except ValueError:
-        logger.error(f"Failed to parse date: {date_string}")
-        return None
 
-def parse_number(number_string: str) -> Optional[int]:
-    logger.info(f"Parsing number string: {number_string}")
-    if number_string.lower() == 'null':
-        return None
-    try:
-        return int(number_string.strip())
-    except ValueError:
-        logger.error(f"Failed to parse number: {number_string}")
-        return None
+
+
+
+
+
+
 
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Starting to parse standardized content")
@@ -142,97 +130,102 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     
     reservation_info = {}
     
-    # Check-in date parsing
-    check_in_patterns = [
-        r'\*\s*\*\*Check-in:\*\*\s*([\d-]+)',
-        r'Check-in:\s*([\d-]+)',
-        r'Check in:\s*([\d-]+)',
-        r'Checkin:\s*([\d-]+)'
-    ]
-    for pattern in check_in_patterns:
-        match = re.search(pattern, standardized_content)
-        if match:
-            reservation_info['check_in'] = parse_date(match.group(1))
-            break
-    if 'check_in' not in reservation_info:
+    # Parse check-in date
+    check_in_match = re.search(r'Check-in:\s*(\d{4}-\d{2}-\d{2})', standardized_content)
+    if check_in_match:
+        reservation_info['check_in'] = datetime.strptime(check_in_match.group(1), "%Y-%m-%d").date()
+        logger.info(f"Parsed check-in date: {reservation_info['check_in']}")
+    else:
         logger.error("Check-in date not found")
-    
-    # Check-out date parsing
-    check_out_patterns = [
-        r'\*\s*\*\*Check-out:\*\*\s*([\d-]+|null)',
-        r'Check-out:\s*([\d-]+|null)',
-        r'Check out:\s*([\d-]+|null)',
-        r'Checkout:\s*([\d-]+|null)'
-    ]
-    for pattern in check_out_patterns:
-        match = re.search(pattern, standardized_content)
-        if match:
-            reservation_info['check_out'] = parse_date(match.group(1))
-            break
-    if 'check_out' not in reservation_info:
-        logger.error("Check-out date not found")
-    
-    # Nights parsing
-    nights_patterns = [
-        r'\*\s*\*\*Nights:\*\*\s*(\d+|null)',
-        r'Nights:\s*(\d+|null)',
-        r'Number of nights:\s*(\d+|null)'
-    ]
-    for pattern in nights_patterns:
-        match = re.search(pattern, standardized_content)
-        if match:
-            reservation_info['nights'] = parse_number(match.group(1))
-            break
-    if 'nights' not in reservation_info:
-        logger.error("Number of nights not found")
-    
-    # Adults parsing
-    adults_patterns = [
-        r'\*\s*\*\*Adults:\*\*\s*(\d+)',
-        r'Adults:\s*(\d+)',
-        r'Number of adults:\s*(\d+)'
-    ]
-    for pattern in adults_patterns:
-        match = re.search(pattern, standardized_content)
-        if match:
-            reservation_info['adults'] = parse_number(match.group(1)) or 0
-            break
-    if 'adults' not in reservation_info:
-        logger.error("Number of adults not found")
+
+    # Parse check-out date
+    check_out_match = re.search(r'Check-out:\s*(\d{4}-\d{2}-\d{2}|null)', standardized_content)
+    if check_out_match and check_out_match.group(1) != 'null':
+        reservation_info['check_out'] = datetime.strptime(check_out_match.group(1), "%Y-%m-%d").date()
+        logger.info(f"Parsed check-out date: {reservation_info['check_out']}")
+    else:
+        reservation_info['check_out'] = None
+        logger.info("Check-out date is null or not found")
+
+    # Parse nights
+    nights_match = re.search(r'Nights:\s*(\d+|null)', standardized_content)
+    if nights_match and nights_match.group(1) != 'null':
+        reservation_info['nights'] = int(nights_match.group(1))
+        logger.info(f"Parsed nights: {reservation_info['nights']}")
+    else:
+        reservation_info['nights'] = None
+        logger.info("Nights is null or not found")
+
+    # Parse adults
+    adults_match = re.search(r'Adults:\s*(\d+)', standardized_content)
+    if adults_match:
+        reservation_info['adults'] = int(adults_match.group(1))
+        logger.info(f"Parsed adults: {reservation_info['adults']}")
+    else:
         reservation_info['adults'] = 0
-    
-    # Children parsing
-    children_patterns = [
-        r'\*\s*\*\*Children:\*\*\s*(\d+)',
-        r'Children:\s*(\d+)',
-        r'Number of children:\s*(\d+)'
-    ]
-    for pattern in children_patterns:
-        match = re.search(pattern, standardized_content)
-        if match:
-            reservation_info['children'] = parse_number(match.group(1)) or 0
-            break
-    if 'children' not in reservation_info:
-        logger.error("Number of children not found")
+        logger.error("Number of adults not found, defaulting to 0")
+
+    # Parse children
+    children_match = re.search(r'Children:\s*(\d+)', standardized_content)
+    if children_match:
+        reservation_info['children'] = int(children_match.group(1))
+        logger.info(f"Parsed children: {reservation_info['children']}")
+    else:
         reservation_info['children'] = 0
-    
-    # Room Type parsing
-    room_type_patterns = [
-        r'\*\s*\*\*Room Type:\*\*\s*(.+)',
-        r'Room Type:\s*(.+)',
-        r'Room:\s*(.+)'
-    ]
-    for pattern in room_type_patterns:
-        match = re.search(pattern, standardized_content)
-        if match:
-            room_type = match.group(1).strip()
-            reservation_info['room_type'] = None if room_type.lower() == 'null' else room_type
-            break
-    if 'room_type' not in reservation_info:
-        logger.error("Room type not found")
-    
+        logger.error("Number of children not found, defaulting to 0")
+
+    # Parse room type
+    room_type_match = re.search(r'Room Type:\s*(.+)', standardized_content)
+    if room_type_match and room_type_match.group(1).lower() != 'null':
+        reservation_info['room_type'] = room_type_match.group(1).strip()
+        logger.info(f"Parsed room type: {reservation_info['room_type']}")
+    else:
+        reservation_info['room_type'] = None
+        logger.info("Room type is null or not found")
+
     logger.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     logger.info("Sending prompt to AI model")
