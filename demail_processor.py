@@ -1,7 +1,7 @@
 import os
 import logging
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, list
 from datetime import datetime, timedelta, date
 
 import imaplib
