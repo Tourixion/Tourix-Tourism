@@ -61,6 +61,82 @@ def clean_email_body(email_body: str) -> str:
     logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
     return email_body
 
+def parse_date(date_string: str) -> Optional[date]:
+    logger.info(f"Parsing date string: {date_string}")
+    if date_string.lower() in ['null', 'none', 'n/a', '-', '']:
+        return None
+    try:
+        # First, try to parse with a specific format
+        parsed_date = datetime.strptime(date_string, "%Y-%m-%d").date()
+    except ValueError:
+        # If that fails, use dateparser for more flexible parsing
+        parsed_date = dateparser.parse(date_string)
+        if parsed_date:
+            parsed_date = parsed_date.date()
+        else:
+            logger.error(f"Failed to parse date: {date_string}")
+            return None
+    
+    logger.info(f"Parsed date: {parsed_date}")
+    return parsed_date
+
+
+
+
+def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
+    logger.info("Post-processing reservation info")
+    logger.info(f"Initial reservation info: {reservation_info}")
+    
+    try:
+        if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
+            check_in = reservation_info['check_in']
+            logger.info(f"Check-in date: {check_in}")
+            
+            if 'check_out' in reservation_info and isinstance(reservation_info['check_out'], date):
+                check_out = reservation_info['check_out']
+                logger.info(f"Check-out date: {check_out}")
+                nights = (check_out - check_in).days
+                reservation_info['nights'] = nights
+                logger.info(f"Calculated number of nights: {nights}")
+            elif 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
+                nights = reservation_info['nights']
+                check_out = check_in + timedelta(days=nights)
+                reservation_info['check_out'] = check_out
+                logger.info(f"Calculated check-out date: {check_out}")
+            else:
+                logger.warning("Neither check-out date nor number of nights provided. Unable to determine stay duration.")
+                reservation_info['check_out'] = None
+                reservation_info['nights'] = None
+        else:
+            logger.error("Check-in date not found in reservation info")
+            reservation_info['error'] = "Missing check-in date"
+        
+        # Additional validation
+        if 'check_in' in reservation_info and 'check_out' in reservation_info:
+            if reservation_info['check_out'] and reservation_info['check_out'] <= reservation_info['check_in']:
+                logger.error("Check-out date is not after check-in date. This is invalid.")
+                reservation_info['error'] = "Invalid date range: Check-out must be after check-in."
+        
+        logger.info(f"Final post-processed reservation info: {reservation_info}")
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in post-processing reservation info: {str(e)}")
+        reservation_info['error'] = f"Error in processing: {str(e)}"
+    
+    return reservation_info
+
+
+
+
+
+
+
+
+
+
+
+
+
 def parse_check_in(content: str) -> Optional[date]:
     patterns = [
         r'\*\*Check-in:\*\*\s*(.+)',
