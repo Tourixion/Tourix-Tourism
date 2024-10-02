@@ -89,14 +89,29 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     
 def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Post-processing reservation info")
-    if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
-        if 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
-            if 'check_out' not in reservation_info or not isinstance(reservation_info['check_out'], date):
-                reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=reservation_info['nights'])
-                logger.info(f"Calculated check-out date: {reservation_info['check_out']}")
-        elif 'check_out' in reservation_info and isinstance(reservation_info['check_out'], date):
-            reservation_info['nights'] = (reservation_info['check_out'] - reservation_info['check_in']).days
-            logger.info(f"Calculated number of nights: {reservation_info['nights']}")
+    try:
+        if 'check_in' in reservation_info:
+            check_in = reservation_info['check_in']
+            if isinstance(check_in, str):
+                check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+            
+            if 'nights' in reservation_info:
+                nights = int(reservation_info['nights'])
+                check_out = check_in + timedelta(days=nights)
+                reservation_info['check_out'] = check_out
+                logger.info(f"Calculated check-out date: {check_out}")
+            elif 'check_out' in reservation_info:
+                check_out = reservation_info['check_out']
+                if isinstance(check_out, str):
+                    check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
+                nights = (check_out - check_in).days
+                reservation_info['nights'] = nights
+                logger.info(f"Calculated number of nights: {nights}")
+        else:
+            logger.warning("Check-in date not found in reservation info")
+    except Exception as e:
+        logger.error(f"Error in post-processing reservation info: {str(e)}")
+    
     return reservation_info
 
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
@@ -483,6 +498,7 @@ def send_error_notification(email_body: str, reservation_info: Dict[str, Any], o
     logger.info("Error notification content prepared")
     send_email_with_original(staff_email, subject, body, original_email)
 
+
 def process_email(email_msg: email.message.Message, sender_address: str) -> None:
     logger.info(f"Starting to process email from {sender_address}")
     email_body = get_email_content(email_msg)
@@ -491,6 +507,13 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
         logger.info("Processing email content")
         reservation_info = process_email_content(email_body)
         logger.info(f"Processed reservation info: {reservation_info}")
+        
+        # Ensure check-in date is a date object
+        if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], str):
+            try:
+                reservation_info['check_in'] = datetime.strptime(reservation_info['check_in'], "%Y-%m-%d").date()
+            except ValueError:
+                logger.error(f"Invalid check-in date format: {reservation_info['check_in']}")
     except Exception as e:
         logger.error(f"Error during email processing: {str(e)}")
         send_error_notification(email_body, {}, email_msg)
@@ -501,9 +524,12 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
     if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
         logger.info("Valid check-in date found, proceeding to web scraping")
         try:
+            # Use check_out if available, otherwise calculate it
+            check_out = reservation_info.get('check_out', reservation_info['check_in'] + timedelta(days=int(reservation_info.get('nights', 1))))
+            
             availability_data = scrape_thekokoon_availability(
                 reservation_info['check_in'],
-                reservation_info.get('check_out', reservation_info['check_in'] + timedelta(days=reservation_info.get('nights', 1))),
+                check_out,
                 reservation_info.get('adults', 2),
                 reservation_info.get('children', 0)
             )
