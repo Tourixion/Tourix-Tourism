@@ -595,7 +595,7 @@ def transform_to_standard_format(email_body: str) -> str:
        - Use 'null' if not mentioned and cannot be directly inferred from the email content.
        - Do NOT calculate nights based on check-in and check-out dates.
     4. For dates, use the format YYYY-MM-DD.
-    5. If the year is not specified, assume the current year ({current_year}) unless the date has already passed, in which case use the next year.
+    5. If the year is not specified, assume the current year unless it is after december 31st, in which case use the next year.
     6. For adults and children, use the numbers mentioned. If not specified, use 0.
     7. If room type is not specified, use 'null'.
     8. IMPORTANT: Ignore days of the week (e.g., Monday, Tuesday) when determining dates. Focus only on the numeric date information.
