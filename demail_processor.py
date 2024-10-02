@@ -564,16 +564,6 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     logger.error("Max retries reached for AI model communication")
     raise Exception("Max retries reached for AI model communication")
     
-def parse_date(date_str: str, current_year: int) -> date:
-    """Parse a date string in the format DD/MM and return a date object."""
-    day, month = map(int, date_str.split('/'))
-    # Assume the current year, but if the resulting date is in the past, use next year
-    year = current_year
-    parsed_date = date(year, month, day)
-    if parsed_date < date.today():
-        year += 1
-        parsed_date = date(year, month, day)
-    return parsed_date
 
 def calculate_nights(check_in: date, check_out: date) -> int:
     """Calculate the number of nights between check-in and check-out dates."""
