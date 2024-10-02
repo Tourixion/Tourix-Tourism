@@ -170,13 +170,14 @@ def parse_check_in(content: str) -> Optional[date]:
         r'ΕΝΑΡΞΗ ΔΙΑΜΟΝΗΣ:?\s*(.+)',  # Greek: Start of stay
         r'ΑΠΟ:?\s*(.+)',  # Greek: From
     ]
-    for pattern in patterns:
+   for pattern in patterns:
         match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
         if match:
             date_str = match.group(1).strip()
             parsed_date = parse_date(date_str)
             if parsed_date:
                 return parsed_date
+    logger.error("[PARSE_CHECK_IN_ERROR] Check-in date not found")
     return None
 
 def parse_check_out(content: str) -> Optional[date]:
@@ -221,6 +222,7 @@ def parse_check_out(content: str) -> Optional[date]:
             parsed_date = parse_date(date_str)
             if parsed_date:
                 return parsed_date
+    logger.error("[PARSE_CHECK_OUT_ERROR] Check-out date not found")
     return None
 
 def parse_nights(content: str) -> Optional[int]:
@@ -256,6 +258,7 @@ def parse_nights(content: str) -> Optional[int]:
         match = re.search(pattern, content, re.IGNORECASE)
         if match:
             return int(match.group(1))
+    logger.error("[PARSE_NIGHTS_ERROR] Number of nights not found")
     return None
 
 def parse_adults(content: str) -> int:
@@ -290,6 +293,7 @@ def parse_adults(content: str) -> int:
         match = re.search(pattern, content, re.IGNORECASE)
         if match:
             return int(match.group(1))
+    logger.error("[PARSE_ADULTS_ERROR] Number of adults not found")
     return 0
 
 def parse_children(content: str) -> int:
@@ -325,7 +329,9 @@ def parse_children(content: str) -> int:
         match = re.search(pattern, content, re.IGNORECASE)
         if match:
             return int(match.group(1))
+    logger.error("[PARSE_CHILDREN_ERROR] Number of children not found")
     return 0
+
 
 def parse_room_type(content: str) -> Optional[str]:
     patterns = [
@@ -388,11 +394,12 @@ def parse_room_type(content: str) -> Optional[str]:
             if room_type.lower() in ['null', 'none', 'n/a', '-', '']:
                 return None
             return room_type
+    logger.error("[PARSE_ROOM_TYPE_ERROR] Room type not found")
     return None
-
+    
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
-    logger.info("Starting to parse standardized content")
-    logger.info(f"Raw standardized content:\n{standardized_content}")
+    logger.info("[PARSE_STANDARDIZED_CONTENT] Starting to parse standardized content")
+    logger.info(f"[PARSE_STANDARDIZED_CONTENT] Raw standardized content:\n{standardized_content}")
     
     reservation_info = {}
     
@@ -400,9 +407,17 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     check_in = parse_check_in(standardized_content)
     if check_in:
         reservation_info['check_in'] = check_in
-        logger.info(f"Parsed check-in date: {check_in}")
+        logger.info(f"[PARSE_STANDARDIZED_CONTENT] Parsed check-in date: {check_in}")
     else:
-        logger.warning("Check-in date not found or invalid")
+        logger.warning("[PARSE_STANDARDIZED_CONTENT_ERROR] Check-in date not found or invalid")
+    
+    # Parse check-out date
+    check_out = parse_check_out(standardized_content)
+    if check_out:
+        reservation_info['check_out'] = check_out
+        logger.info(f"[PARSE_STANDARDIZED_CONTENT] Parsed check-out date: {check_out}")
+    else:
+        logger.info("[PARSE_STANDARDIZED_CONTENT] Check-out date not found or set to null")
     
     # Parse check-out date
     check_out = parse_check_out(standardized_content)
@@ -454,9 +469,8 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
         reservation_info['nights'] = calculated_nights
         logger.info(f"Calculated number of nights: {calculated_nights}")
     
-    logger.info(f"Final parsed reservation info: {reservation_info}")
+    logger.info(f"[PARSE_STANDARDIZED_CONTENT] Final parsed reservation info: {reservation_info}")
     return reservation_info
-
 
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     logger.info("Sending prompt to AI model")
