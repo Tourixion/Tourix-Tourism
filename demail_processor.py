@@ -117,44 +117,81 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     return reservation_info
 
 
+def parse_date(date_string: str) -> Optional[date]:
+    logger.info(f"Parsing date string: {date_string}")
+    if date_string.lower() == 'null':
+        return None
+    try:
+        return datetime.strptime(date_string, "%Y-%m-%d").date()
+    except ValueError:
+        logger.error(f"Failed to parse date: {date_string}")
+        return None
+
+def parse_number(number_string: str) -> Optional[int]:
+    logger.info(f"Parsing number string: {number_string}")
+    if number_string.lower() == 'null':
+        return None
+    try:
+        return int(number_string)
+    except ValueError:
+        logger.error(f"Failed to parse number: {number_string}")
+        return None
+
+def parse_check_in(content: str) -> Optional[date]:
+    match = re.search(r'Check-in:\s*(\d{4}-\d{2}-\d{2}|null)', content)
+    if match:
+        return parse_date(match.group(1))
+    logger.error("Check-in date not found")
+    return None
+
+def parse_check_out(content: str) -> Optional[date]:
+    match = re.search(r'Check-out:\s*(\d{4}-\d{2}-\d{2}|null)', content)
+    if match:
+        return parse_date(match.group(1))
+    logger.error("Check-out date not found")
+    return None
+
+def parse_nights(content: str) -> Optional[int]:
+    match = re.search(r'Nights:\s*(\d+|null)', content)
+    if match:
+        return parse_number(match.group(1))
+    logger.error("Number of nights not found")
+    return None
+
+def parse_adults(content: str) -> int:
+    match = re.search(r'Adults:\s*(\d+)', content)
+    if match:
+        return parse_number(match.group(1))
+    logger.error("Number of adults not found")
+    return 0  # Default to 0 if not specified
+
+def parse_children(content: str) -> int:
+    match = re.search(r'Children:\s*(\d+)', content)
+    if match:
+        return parse_number(match.group(1))
+    logger.error("Number of children not found")
+    return 0  # Default to 0 if not specified
+
+def parse_room_type(content: str) -> Optional[str]:
+    match = re.search(r'Room Type:\s*(.+)', content)
+    if match:
+        room_type = match.group(1).strip()
+        return None if room_type.lower() == 'null' else room_type
+    logger.error("Room type not found")
+    return None
+
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Starting to parse standardized content")
     logger.info(f"Raw standardized content:\n{standardized_content}")
     
-    reservation_info = {}
-    for line in standardized_content.split('\n'):
-        logger.info(f"Processing line: {line}")
-        if ':' in line:
-            key, value = line.split(':', 1)
-            key = key.strip().lower().replace(' ', '_')
-            value = value.strip()
-            logger.info(f"Extracted key: '{key}', value: '{value}'")
-            
-            if value and value != '[]':
-                if key in ['check_in', 'check_out']:
-                    logger.info(f"Attempting to parse date for {key}: {value}")
-                    try:
-                        # Parse the date string to a date object
-                        parsed_date = datetime.strptime(value, "%Y-%m-%d").date()
-                        reservation_info[key] = parsed_date
-                        logger.info(f"Successfully parsed {key}: {parsed_date}")
-                    except ValueError as e:
-                        logger.error(f"Failed to parse date for {key}: {value}. Error: {str(e)}")
-                        reservation_info[key] = value
-                elif key in ['adults', 'children']:
-                    logger.info(f"Attempting to parse integer for {key}: {value}")
-                    try:
-                        parsed_int = int(value)
-                        reservation_info[key] = parsed_int
-                        logger.info(f"Successfully parsed {key}: {parsed_int}")
-                    except ValueError as e:
-                        logger.error(f"Failed to parse integer for {key}: {value}. Error: {str(e)}")
-                        reservation_info[key] = value
-                else:
-                    logger.info(f"Storing {key} as string: {value}")
-                    reservation_info[key] = value
-            else:
-                logger.info(f"Skipping empty or placeholder value for key: {key}")
+    reservation_info = {
+        'check_in': parse_check_in(standardized_content),
+        'check_out': parse_check_out(standardized_content),
+        'nights': parse_nights(standardized_content),
+        'adults': parse_adults(standardized_content),
+        'children': parse_children(standardized_content),
+        'room_type': parse_room_type(standardized_content)
+    }
     
     logger.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
@@ -245,7 +282,8 @@ def transform_to_standard_format(email_body: str) -> str:
     5. If the year is not specified, assume the current year ({current_year}) unless the date has already passed, in which case use the next year.
     6. For adults and children, use the numbers mentioned. If not specified, use 0.
     7. If room type is not specified, use 'null'.
-
+    8. IMPORTANT: Ignore days of the week (e.g., Monday, Tuesday) when determining dates. Focus only on the numeric date information.
+    
     Current date for reference: {current_date.strftime("%Y-%m-%d")}
 
     Please provide your standardized output, followed by a brief explanation of how you interpreted the information and any assumptions you made.
