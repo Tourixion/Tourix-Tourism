@@ -3,6 +3,7 @@ import logging
 import re
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, date
+import time
 
 import imaplib
 import smtplib
@@ -12,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 import requests
+from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
 import ssl
 
@@ -111,7 +113,9 @@ def transform_to_standard_format(email_body: str) -> str:
     If any information is missing, leave the placeholder empty.
     """
     
-    transformed_content = send_to_ai_model(prompt.format(email_body=email_body))
+    # Choose one of these methods:
+    # transformed_content = send_to_ai_model_requests(prompt.format(email_body=email_body))
+    transformed_content = send_to_ai_model_openai(prompt.format(email_body=email_body))
     return transformed_content
 
 OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -119,7 +123,7 @@ OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 def send_to_ai_model_requests(prompt: str, max_retries: int = 3) -> str:
     headers = {
         "Authorization": f"Bearer {os.getenv('OPEN_ROUTER_API_KEY')}",
-        "HTTP-Referer": "https://github.com/yourusername/your-repo",  # Replace with your actual GitHub repo URL
+        "HTTP-Referer": "https://github.com/vahidbk/Tourix-Tourism",
         "X-Title": "Email Reservation Processor",
         "Content-Type": "application/json"
     }
@@ -151,7 +155,7 @@ def send_to_ai_model_openai(prompt: str) -> str:
         base_url="https://openrouter.ai/api/v1",
         api_key=os.getenv("OPEN_ROUTER_API_KEY"),
         default_headers={
-            "HTTP-Referer": "https://github.com/yourusername/your-repo",  # Replace with your actual GitHub repo URL
+            "HTTP-Referer": "https://github.com/vahidbk/Tourix-Tourism",
             "X-Title": "Email Reservation Processor",
         }
     )
@@ -168,7 +172,6 @@ def send_to_ai_model_openai(prompt: str) -> str:
     except Exception as e:
         logging.error(f"Error in AI model communication: {str(e)}")
         raise
-
 
 
 
@@ -480,6 +483,33 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
         return
     
     staff_email = os.getenv('STAFF_EMAIL')
+    
+    if 'check_in' in reservation_info and 'check_out' in reservation_info:
+        logging.info("Reservation dates found, proceeding to web scraping")
+        try:
+            availability_data = scrape_thekokoon_availability(
+                reservation_info['check_in'],
+                reservation_info['check_out'],
+                reservation_info.get('adults', 2),
+                reservation_info.get('children', 0)
+            )
+            logging.info(f"Web scraping result: {availability_data}")
+            
+            if availability_data:
+                logging.info("Availability data found, sending detailed response to staff")
+                send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek(email_body), email_msg)
+            else:
+                logging.info("No availability data found, sending partial information response to staff")
+                send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
+        except Exception as e:
+            logging.error(f"Error during web scraping: {str(e)}")
+            send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
+    else:
+        logging.warning("Failed to parse reservation dates. Sending error notification to staff.")
+        send_error_notification(email_body, reservation_info, email_msg)
+    
+    logging.info("Email processing completed")
+
     
 def main():
     logging.info("Starting email processor script")
