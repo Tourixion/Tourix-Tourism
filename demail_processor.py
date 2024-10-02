@@ -160,6 +160,7 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     
 def transform_to_standard_format(email_body: str) -> str:
     logger.info("Transforming email content to standard format")
+    current_date = datetime.now().strftime("%Y-%m-%d")
     prompt = f"""
     Transform the following email content into a standardized format:
     
@@ -174,10 +175,21 @@ def transform_to_standard_format(email_body: str) -> str:
     Children: [NUMBER]
     Room Type: [TYPE]
     
-    Please fill in the [PLACEHOLDERS] with the appropriate information from the email.
-    If any information is missing, leave the placeholder empty.
-    For the check-in and check-out dates, please use the format YYYY-MM-DD.
-    If only the number of nights is provided, leave the check-out date empty.
+    Please follow these guidelines carefully:
+    1. Fill in the [PLACEHOLDERS] with the appropriate information from the email.
+    2. If any information is missing, leave the placeholder empty.
+    3. For the check-in and check-out dates, always use the format YYYY-MM-DD.
+    4. If only the number of nights is provided, leave the check-out date empty.
+    5. Pay special attention to date formats in different languages. For example, "3/10" could mean October 3rd or March 10th depending on the context.
+    6. If a date is mentioned as "tomorrow" or a day of the week, use the current date to calculate the actual date.
+    7. For dates spanning December to January, assume the year changes. For example, if check-in is in December and check-out is in January, the check-out year should be the current year + 1.
+    8. Be extremely careful with date formats like "ΑΦΙΞΗ ΑΥΡΙΟ ΠΕΜΠΤΗ 3/10 ΚΑΙ ΑΝΑΧΩΡΗΣΗ ΤΟ ΣΑΒΒΑΤΟ 05/10". Ensure you interpret these correctly based on the current date and context.
+    9. If the year is not explicitly mentioned, assume it's the current year unless the date has already passed, in which case use the next year.
+    10. Always include the full 4-digit year in your output.
+
+    Current date for reference: {current_date}
+
+    Please provide your standardized output, followed by a brief explanation of how you interpreted the dates and any assumptions you made.
     """
     
     try:
