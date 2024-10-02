@@ -184,6 +184,8 @@ def parse_check_in(content: str) -> Optional[date]:
 
 def parse_check_out(content: str) -> Optional[date]:
     patterns = [
+        r'Check-out:\s*(\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
+        r'\*\*Check-out:\*\*\s*(\d{4}-\d{2}-\d{2})',
         r'\*\*Check-out:\*\*\s*(.+)',
         r'Check-out:\s*(.+)',
         r'Check out:\s*(.+)',
