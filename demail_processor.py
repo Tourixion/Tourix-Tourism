@@ -119,22 +119,28 @@ def transform_to_standard_format(email_body: str) -> str:
     return transformed_content
 
 def send_to_ai_model(prompt: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {OPEN_ROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": "openai/gpt-3.5-turbo",  # You can change this to other models available on Open Router
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant that transforms email content into a standardized format."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that transforms email content into a standardized format."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=300,
-            n=1,
-            stop=None,
-            temperature=0.7,
-        )
-        return response.choices[0].message['content'].strip()
-    except Exception as e:
+        response = requests.post(OPEN_ROUTER_API_URL, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result['choices'][0]['message']['content'].strip()
+    except requests.RequestException as e:
         logging.error(f"Error in AI model communication: {str(e)}")
         raise
+
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -430,32 +436,6 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
         return
     
     staff_email = os.getenv('STAFF_EMAIL')
-    
-    if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        logging.info("Reservation dates found, proceeding to web scraping")
-        try:
-            availability_data = scrape_thekokoon_availability(
-                reservation_info['check_in'],
-                reservation_info['check_out'],
-                reservation_info.get('adults', 2),
-                reservation_info.get('children', 0)
-            )
-            logging.info(f"Web scraping result: {availability_data}")
-            
-            if availability_data:
-                logging.info("Availability data found, sending detailed response to staff")
-                send_autoresponse(staff_email, sender_address, reservation_info, availability_data, 'el' in reservation_info.get('language', ''), email_msg)
-            else:
-                logging.info("No availability data found, sending partial information response to staff")
-                send_partial_info_response(staff_email, sender_address, reservation_info, 'el' in reservation_info.get('language', ''), email_msg)
-        except Exception as e:
-            logging.error(f"Error during web scraping: {str(e)}")
-            send_partial_info_response(staff_email, sender_address, reservation_info, 'el' in reservation_info.get('language', ''), email_msg)
-    else:
-        logging.warning("Failed to parse reservation dates. Sending error notification to staff.")
-        send_error_notification(email_body, reservation_info, email_msg)
-    
-    logging.info("Email processing completed")
     
 def main():
     logging.info("Starting email processor script")
