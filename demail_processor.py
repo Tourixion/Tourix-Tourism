@@ -23,10 +23,6 @@ from dateutil import parser as date_parser
 import dateparser
 from transliterate import detect_language as transliterate_detect_language
 
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -77,15 +73,18 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     return reservation_info
 
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
+    api_key = os.environ.get("OPEN_ROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPEN_ROUTER_API_KEY is not set in the environment variables")
+
     headers = {
-        "Authorization": f"Bearer {OPEN_ROUTER_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "HTTP-Referer": "https://github.com/vahidbk/Tourix-Tourism",
         "X-Title": "Email Reservation Processor",
         "Content-Type": "application/json"
     }
 
     data = {
-        "model": "openai/gpt-3.5-turbo",
         "messages": [
             {"role": "system", "content": "You are a helpful assistant that transforms email content into a standardized format."},
             {"role": "user", "content": prompt}
@@ -94,20 +93,24 @@ def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
 
     for attempt in range(max_retries):
         try:
-            response = requests.post(OPEN_ROUTER_API_URL, headers=headers, json=data, timeout=30)
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=30
+            )
             response.raise_for_status()
             result = response.json()
             return result['choices'][0]['message']['content'].strip()
-        except RequestException as e:
+        except requests.RequestException as e:
             logging.error(f"Attempt {attempt + 1} failed: Error in AI model communication: {str(e)}")
             if attempt == max_retries - 1:
                 raise
-            time.sleep(2 ** attempt)  # Exponential backoff
 
     raise Exception("Max retries reached for AI model communication")
-
+    
 def transform_to_standard_format(email_body: str) -> str:
-    prompt = """
+    prompt = f"""
     Transform the following email content into a standardized format:
     
     Original Email:
@@ -124,9 +127,24 @@ def transform_to_standard_format(email_body: str) -> str:
     If any information is missing, leave the placeholder empty.
     """
     
-    transformed_content = send_to_ai_model(prompt.format(email_body=email_body))
-    return transformed_content
+    try:
+        transformed_content = send_to_ai_model(prompt)
+        logging.info(f"Standardized content: {transformed_content}")
+        return transformed_content
+    except Exception as e:
+        logging.error(f"Error during email transformation: {str(e)}")
+        raise
 
+# This function can be called from your main process_email function
+def process_email_content(email_body: str) -> Dict[str, Any]:
+    try:
+        standardized_content = transform_to_standard_format(email_body)
+        reservation_info = parse_standardized_content(standardized_content)
+        return reservation_info
+    except Exception as e:
+        logging.error(f"Error processing email content: {str(e)}")
+        raise
+        
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
         check_in_date = datetime.strptime(check_in_date, "%Y-%m-%d").date()
