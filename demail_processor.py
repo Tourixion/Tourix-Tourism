@@ -124,8 +124,17 @@ def parse_date(date_string: str) -> Optional[date]:
     try:
         return datetime.strptime(date_string, "%Y-%m-%d").date()
     except ValueError:
-        logger.error(f"Failed to parse date: {date_string}")
-        return None
+        current_year = datetime.now().year
+        try:
+            # Try parsing with just month and day
+            parsed_date = datetime.strptime(date_string, "%m-%d").replace(year=current_year).date()
+            # If the resulting date is in the past, use next year
+            if parsed_date < date.today():
+                parsed_date = parsed_date.replace(year=current_year + 1)
+            return parsed_date
+        except ValueError:
+            logger.error(f"Failed to parse date: {date_string}")
+            return None
 
 def parse_number(number_string: str) -> Optional[int]:
     logger.info(f"Parsing number string: {number_string}")
@@ -161,14 +170,14 @@ def parse_nights(content: str) -> Optional[int]:
 def parse_adults(content: str) -> int:
     match = re.search(r'Adults:\s*(\d+)', content)
     if match:
-        return parse_number(match.group(1))
+        return parse_number(match.group(1)) or 0
     logger.error("Number of adults not found")
     return 0  # Default to 0 if not specified
 
 def parse_children(content: str) -> int:
     match = re.search(r'Children:\s*(\d+)', content)
     if match:
-        return parse_number(match.group(1))
+        return parse_number(match.group(1)) or 0
     logger.error("Number of children not found")
     return 0  # Default to 0 if not specified
 
@@ -192,6 +201,9 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
         'children': parse_children(standardized_content),
         'room_type': parse_room_type(standardized_content)
     }
+    
+    logger.info(f"Final parsed reservation info: {reservation_info}")
+    return reservation_info
     
     logger.info(f"Final parsed reservation info: {reservation_info}")
     return reservation_info
