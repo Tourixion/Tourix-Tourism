@@ -71,12 +71,32 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
             value = value.strip()
             if value and value != '[]':
                 if key in ['check_in', 'check_out']:
-                    reservation_info[key] = datetime.strptime(value, "%Y-%m-%d").date()
-                elif key in ['adults', 'children']:
-                    reservation_info[key] = int(value)
+                    try:
+                        reservation_info[key] = datetime.strptime(value, "%Y-%m-%d").date()
+                    except ValueError:
+                        logger.warning(f"Failed to parse date for {key}: {value}")
+                        reservation_info[key] = value
+                elif key in ['adults', 'children', 'nights']:
+                    try:
+                        reservation_info[key] = int(value)
+                    except ValueError:
+                        logger.warning(f"Failed to parse integer for {key}: {value}")
+                        reservation_info[key] = value
                 else:
                     reservation_info[key] = value
     logger.info(f"Parsed reservation info: {reservation_info}")
+    return reservation_info
+    
+def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
+    logger.info("Post-processing reservation info")
+    if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
+        if 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
+            if 'check_out' not in reservation_info or not isinstance(reservation_info['check_out'], date):
+                reservation_info['check_out'] = reservation_info['check_in'] + timedelta(days=reservation_info['nights'])
+                logger.info(f"Calculated check-out date: {reservation_info['check_out']}")
+        elif 'check_out' in reservation_info and isinstance(reservation_info['check_out'], date):
+            reservation_info['nights'] = (reservation_info['check_out'] - reservation_info['check_in']).days
+            logger.info(f"Calculated number of nights: {reservation_info['nights']}")
     return reservation_info
 
 def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
@@ -132,12 +152,15 @@ def transform_to_standard_format(email_body: str) -> str:
     Standardized Format:
     Check-in: [DATE]
     Check-out: [DATE]
+    Nights: [NUMBER]
     Adults: [NUMBER]
     Children: [NUMBER]
     Room Type: [TYPE]
     
     Please fill in the [PLACEHOLDERS] with the appropriate information from the email.
     If any information is missing, leave the placeholder empty.
+    For the check-in and check-out dates, please use the format YYYY-MM-DD.
+    If only the number of nights is provided, leave the check-out date empty.
     """
     
     try:
@@ -153,11 +176,13 @@ def process_email_content(email_body: str) -> Dict[str, Any]:
     try:
         standardized_content = transform_to_standard_format(email_body)
         reservation_info = parse_standardized_content(standardized_content)
+        reservation_info = post_process_reservation_info(reservation_info)
         logger.info(f"Processed email content: {reservation_info}")
         return reservation_info
     except Exception as e:
         logger.error(f"Error processing email content: {str(e)}")
         raise
+
         
 def calculate_free_cancellation_date(check_in_date):
     logger.info(f"Calculating free cancellation date for check-in date: {check_in_date}")
@@ -338,7 +363,8 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
 
         Λεπτομέρειες κράτησης:
         Ημερομηνία άφιξης: {reservation_info['check_in']}
-        Ημερομηνία αναχώρησης: {reservation_info['check_out']}
+        Ημερομηνία αναχώρησης: {reservation_info.get('check_out', 'Δεν διευκρινίστηκε')}
+        Αριθμός διανυκτερεύσεων: {reservation_info.get('nights', 'Δεν διευκρινίστηκε')}
         Αριθμός ενηλίκων: {reservation_info['adults']}
         Αριθμός παιδιών: {reservation_info.get('children', 'Δεν διευκρινίστηκε')}
 
@@ -351,7 +377,8 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
 
         Reservation details:
         Check-in date: {reservation_info['check_in']}
-        Check-out date: {reservation_info['check_out']}
+        Check-out date: {reservation_info.get('check_out', 'Not specified')}
+        Number of nights: {reservation_info.get('nights', 'Not specified')}
         Number of adults: {reservation_info['adults']}
         Number of children: {reservation_info.get('children', 'Not specified')}
 
@@ -461,24 +488,22 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
     email_body = get_email_content(email_msg)
     
     try:
-        logger.info("Transforming email content to standard format")
-        standardized_content = transform_to_standard_format(email_body)
-        logger.info(f"Standardized content: {standardized_content}")
-        reservation_info = parse_standardized_content(standardized_content)
-        logger.info(f"Parsed reservation info: {reservation_info}")
+        logger.info("Processing email content")
+        reservation_info = process_email_content(email_body)
+        logger.info(f"Processed reservation info: {reservation_info}")
     except Exception as e:
-        logger.error(f"Error during email transformation or parsing: {str(e)}")
+        logger.error(f"Error during email processing: {str(e)}")
         send_error_notification(email_body, {}, email_msg)
         return
     
     staff_email = os.getenv('STAFF_EMAIL')
     
-    if 'check_in' in reservation_info and 'check_out' in reservation_info:
-        logger.info("Reservation dates found, proceeding to web scraping")
+    if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
+        logger.info("Valid check-in date found, proceeding to web scraping")
         try:
             availability_data = scrape_thekokoon_availability(
                 reservation_info['check_in'],
-                reservation_info['check_out'],
+                reservation_info.get('check_out', reservation_info['check_in'] + timedelta(days=reservation_info.get('nights', 1))),
                 reservation_info.get('adults', 2),
                 reservation_info.get('children', 0)
             )
@@ -494,11 +519,11 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
             logger.error(f"Error during web scraping: {str(e)}")
             send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
     else:
-        logger.warning("Failed to parse reservation dates. Sending error notification to staff.")
+        logger.warning("Failed to parse valid check-in date. Sending error notification to staff.")
         send_error_notification(email_body, reservation_info, email_msg)
     
     logger.info("Email processing completed")
-
+    
 def main():
     logger.info("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
