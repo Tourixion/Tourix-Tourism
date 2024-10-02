@@ -24,7 +24,7 @@ import dateparser
 from transliterate import detect_language as transliterate_detect_language
 
 from dotenv import load_dotenv
-from openai import OpenAI
+
 # Load environment variables
 load_dotenv()
 
@@ -40,10 +40,6 @@ if not OPEN_ROUTER_API_KEY:
 
 OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-###############################################################################################
 def normalize_text(text: str) -> str:
     return text.lower()
 
@@ -55,29 +51,14 @@ def detect_language(text: str) -> str:
     return 'el' if lang == 'el' else 'en'
 
 def clean_email_body(email_body: str) -> str:
-    """Remove forwarded message headers and unnecessary email formatting without breaking important content."""
-    
-    # Remove forwarded message header (preserve content after the header)
     email_body = re.sub(r'---------- Forwarded message ---------\n.*?\n\n', '', email_body, flags=re.DOTALL)
-    
-    # Remove common email headers (From:, Date:, Subject:, To:) at the beginning of the email
     email_body = re.sub(r'^(From|Date|Subject|To):.*$', '', email_body, flags=re.MULTILINE)
-    
-    # Remove only actual email-like headers (avoid stripping valid content with colons)
-    # We add a stricter pattern to avoid removing lines that aren't headers
     email_body = re.sub(r'^[A-Za-z-]+:\s.*$', '', email_body, flags=re.MULTILINE)
-    
-    # Limit removal of multiple empty lines (keep 1 line break between paragraphs)
     email_body = re.sub(r'\n\s*\n', '\n\n', email_body)
-    
-    # Strip leading and trailing whitespace
     email_body = email_body.strip()
-    
     logging.info("Cleaned email body:")
     logging.info(email_body)
-    
     return email_body
-
 
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     reservation_info = {}
@@ -95,34 +76,9 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
                     reservation_info[key] = value
     return reservation_info
 
-def transform_to_standard_format(email_body: str) -> str:
-    prompt = """
-    Transform the following email content into a standardized format:
-    
-    Original Email:
-    {email_body}
-    
-    Standardized Format:
-    Check-in: [DATE]
-    Check-out: [DATE]
-    Adults: [NUMBER]
-    Children: [NUMBER]
-    Room Type: [TYPE]
-    
-    Please fill in the [PLACEHOLDERS] with the appropriate information from the email.
-    If any information is missing, leave the placeholder empty.
-    """
-    
-    # Choose one of these methods:
-    # transformed_content = send_to_ai_model_requests(prompt.format(email_body=email_body))
-    transformed_content = send_to_ai_model_openai(prompt.format(email_body=email_body))
-    return transformed_content
-
-OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-def send_to_ai_model_requests(prompt: str, max_retries: int = 3) -> str:
+def send_to_ai_model(prompt: str, max_retries: int = 3) -> str:
     headers = {
-        "Authorization": f"Bearer {os.getenv('OPEN_ROUTER_API_KEY')}",
+        "Authorization": f"Bearer {OPEN_ROUTER_API_KEY}",
         "HTTP-Referer": "https://github.com/vahidbk/Tourix-Tourism",
         "X-Title": "Email Reservation Processor",
         "Content-Type": "application/json"
@@ -150,44 +106,26 @@ def send_to_ai_model_requests(prompt: str, max_retries: int = 3) -> str:
 
     raise Exception("Max retries reached for AI model communication")
 
-def send_to_ai_model_openai(prompt: str) -> str:
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("OPEN_ROUTER_API_KEY"),
-        default_headers={
-            "HTTP-Referer": "https://github.com/vahidbk/Tourix-Tourism",
-            "X-Title": "Email Reservation Processor",
-        }
-    )
-
-    try:
-        completion = client.chat.completions.create(
-            model="openai/gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that transforms email content into a standardized format."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return completion.choices[0].message.content.strip()
-    except Exception as e:
-        logging.error(f"Error in AI model communication: {str(e)}")
-        raise
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+def transform_to_standard_format(email_body: str) -> str:
+    prompt = """
+    Transform the following email content into a standardized format:
+    
+    Original Email:
+    {email_body}
+    
+    Standardized Format:
+    Check-in: [DATE]
+    Check-out: [DATE]
+    Adults: [NUMBER]
+    Children: [NUMBER]
+    Room Type: [TYPE]
+    
+    Please fill in the [PLACEHOLDERS] with the appropriate information from the email.
+    If any information is missing, leave the placeholder empty.
+    """
+    
+    transformed_content = send_to_ai_model(prompt.format(email_body=email_body))
+    return transformed_content
 
 def calculate_free_cancellation_date(check_in_date):
     if isinstance(check_in_date, str):
@@ -231,7 +169,6 @@ def get_email_content(msg):
     else:
         return msg.get_payload(decode=True).decode()
 
-
 def parse_numeric_fields(reservation_info):
     for num_key in ['adults', 'children', 'nights']:
         if num_key in reservation_info:
@@ -245,8 +182,6 @@ def parse_numeric_fields(reservation_info):
         reservation_info['adults'] = 2
     return reservation_info
 
-
-    
 def is_greek(text):
     return bool(re.search(r'[\u0370-\u03FF]', text))
 
@@ -348,7 +283,6 @@ def send_email(to_address: str, subject: str, body: str) -> None:
         logging.error(f"Failed to send email to {to_address}. Error: {str(e)}")
         raise
 
-
 def send_autoresponse(staff_email: str, customer_email: str, reservation_info: Dict[str, Any], availability_data: Dict[str, List[Dict[str, Any]]], is_greek_email: bool, original_email) -> None:
     if is_greek_email:
         subject = f"Νέο Αίτημα Κράτησης - {customer_email}"
@@ -389,8 +323,6 @@ def send_autoresponse(staff_email: str, customer_email: str, reservation_info: D
                     body += f"  Free cancellation until: {price_option['free_cancellation_date'].strftime('%d/%m/%Y')}\n"
     
     body += "\nPlease process this request and respond to the customer as appropriate."
-
-    send_email_with_original(staff_email, subject, body, original_email)
 
 def send_email_with_original(to_address: str, subject: str, body: str, original_email) -> None:
     smtp_server = "mail.kokoonvolos.gr"
@@ -510,7 +442,6 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
     
     logging.info("Email processing completed")
 
-    
 def main():
     logging.info("Starting email processor script")
     email_address = os.environ['EMAIL_ADDRESS']
