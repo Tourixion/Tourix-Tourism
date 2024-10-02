@@ -64,28 +64,24 @@ def clean_email_body(email_body: str) -> str:
 def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     logger.info("Parsing standardized content")
     reservation_info = {}
-    current_year = datetime.now().year
     for line in standardized_content.split('\n'):
         if ':' in line:
             key, value = line.split(':', 1)
-            key = key.strip().lower().replace(' ', '_')
+            key = key.strip().lower().replace(' ', '_').replace('*', '')
             value = value.strip()
             if value and value != '[]':
                 if key in ['check_in', 'check_out']:
-                    try:
-                        # First, try to parse as YYYY-MM-DD
-                        reservation_info[key] = datetime.strptime(value, "%Y-%m-%d").date()
-                    except ValueError:
-                        # If that fails, try to parse as DD/MM
+                    match = re.search(r'\d{4}-\d{2}-\d{2}', value)
+                    if match:
                         try:
-                            reservation_info[key] = parse_date(value, current_year)
+                            reservation_info[key] = datetime.strptime(match.group(), "%Y-%m-%d").date()
                         except ValueError:
                             logger.warning(f"Failed to parse date for {key}: {value}")
                             reservation_info[key] = value
                 elif key in ['adults', 'children']:
                     try:
-                        reservation_info[key] = int(value)
-                    except ValueError:
+                        reservation_info[key] = int(re.search(r'\d+', value).group())
+                    except (ValueError, AttributeError):
                         logger.warning(f"Failed to parse integer for {key}: {value}")
                         reservation_info[key] = value
                 else:
@@ -101,18 +97,20 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
             
             if 'check_out' in reservation_info and isinstance(reservation_info['check_out'], date):
                 check_out = reservation_info['check_out']
-                nights = calculate_nights(check_in, check_out)
+                nights = (check_out - check_in).days
                 reservation_info['nights'] = nights
-                logger.info(f"Calculated number of nights from check-in and check-out: {nights}")
+                logger.info(f"Calculated number of nights: {nights}")
             
             elif 'nights' in reservation_info and isinstance(reservation_info['nights'], int):
                 nights = reservation_info['nights']
                 check_out = check_in + timedelta(days=nights)
                 reservation_info['check_out'] = check_out
-                logger.info(f"Calculated check-out date from check-in and nights: {check_out}")
+                logger.info(f"Calculated check-out date: {check_out}")
             
             else:
-                logger.warning("Neither check-out date nor number of nights provided. Unable to complete reservation info.")
+                logger.warning("Neither check-out date nor number of nights provided. Assuming 1 night stay.")
+                reservation_info['check_out'] = check_in + timedelta(days=1)
+                reservation_info['nights'] = 1
         
         else:
             logger.warning("Check-in date not found or invalid in reservation info")
@@ -549,47 +547,43 @@ def process_email(email_msg: email.message.Message, sender_address: str) -> None
     
     try:
         logger.info("Processing email content")
-        reservation_info = process_email_content(email_body)
+        standardized_content = transform_to_standard_format(email_body)
+        reservation_info = parse_standardized_content(standardized_content)
+        reservation_info = post_process_reservation_info(reservation_info)
         logger.info(f"Processed reservation info: {reservation_info}")
+        
+        if 'error' in reservation_info:
+            logger.error(f"Error in reservation info: {reservation_info['error']}")
+            send_error_notification(email_body, reservation_info, email_msg)
+            return
+        
+        if 'check_in' in reservation_info and isinstance(reservation_info['check_in'], date):
+            logger.info("Valid check-in data found, proceeding to web scraping")
+            try:
+                availability_data = scrape_thekokoon_availability(
+                    reservation_info['check_in'],
+                    reservation_info['check_out'],
+                    reservation_info.get('adults', 2),
+                    reservation_info.get('children', 0)
+                )
+                logger.info(f"Web scraping result: {availability_data}")
+                
+                if availability_data:
+                    logger.info("Availability data found, sending detailed response to staff")
+                    send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek(email_body), email_msg)
+                else:
+                    logger.info("No availability data found, sending partial information response to staff")
+                    send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
+            except Exception as e:
+                logger.error(f"Error during web scraping: {str(e)}")
+                send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
+        else:
+            logger.warning("Failed to parse valid check-in date. Sending error notification to staff.")
+            send_error_notification(email_body, reservation_info, email_msg)
+    
     except Exception as e:
         logger.error(f"Error during email processing: {str(e)}")
         send_error_notification(email_body, {}, email_msg)
-        return
-    
-    staff_email = os.getenv('STAFF_EMAIL')
-    
-    if 'check_in' in reservation_info and (isinstance(reservation_info['check_in'], date) or isinstance(reservation_info['check_in'], str)):
-        logger.info("Valid check-in data found, proceeding to web scraping")
-        try:
-            check_in = reservation_info['check_in']
-            if isinstance(check_in, str):
-                check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
-            
-            # Use check_out if available, otherwise calculate it
-            check_out = reservation_info.get('check_out', check_in + timedelta(days=int(reservation_info.get('nights', 1))))
-            if isinstance(check_out, str):
-                check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
-            
-            availability_data = scrape_thekokoon_availability(
-                check_in,
-                check_out,
-                reservation_info.get('adults', 2),
-                reservation_info.get('children', 0)
-            )
-            logger.info(f"Web scraping result: {availability_data}")
-            
-            if availability_data:
-                logger.info("Availability data found, sending detailed response to staff")
-                send_autoresponse(staff_email, sender_address, reservation_info, availability_data, is_greek(email_body), email_msg)
-            else:
-                logger.info("No availability data found, sending partial information response to staff")
-                send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
-        except Exception as e:
-            logger.error(f"Error during web scraping: {str(e)}")
-            send_partial_info_response(staff_email, sender_address, reservation_info, is_greek(email_body), email_msg)
-    else:
-        logger.warning("Failed to parse valid check-in date. Sending error notification to staff.")
-        send_error_notification(email_body, reservation_info, email_msg)
     
     logger.info("Email processing completed")
     
