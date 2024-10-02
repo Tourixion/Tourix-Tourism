@@ -60,9 +60,9 @@ def clean_email_body(email_body: str) -> str:
     email_body = email_body.strip()
     logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
     return email_body
-
+    
 def parse_date(date_string: str) -> Optional[date]:
-    logger.info(f"Parsing date string: {date_string}")
+    logger.info(f"[PARSE_DATE] Parsing date string: {date_string}")
     if date_string.lower() in ['null', 'none', 'n/a', '-', '']:
         return None
     try:
@@ -74,12 +74,11 @@ def parse_date(date_string: str) -> Optional[date]:
         if parsed_date:
             parsed_date = parsed_date.date()
         else:
-            logger.error(f"Failed to parse date: {date_string}")
+            logger.error(f"[PARSE_DATE_ERROR] Failed to parse date: {date_string}")
             return None
     
-    logger.info(f"Parsed date: {parsed_date}")
+    logger.info(f"[PARSE_DATE] Parsed date: {parsed_date}")
     return parsed_date
-
 
 
 
@@ -170,7 +169,7 @@ def parse_check_in(content: str) -> Optional[date]:
         r'ΕΝΑΡΞΗ ΔΙΑΜΟΝΗΣ:?\s*(.+)',  # Greek: Start of stay
         r'ΑΠΟ:?\s*(.+)',  # Greek: From
     ]
-   for pattern in patterns:
+    for pattern in patterns:
         match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
         if match:
             date_str = match.group(1).strip()
