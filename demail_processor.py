@@ -67,31 +67,31 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     logger.info(f"Initial reservation info: {reservation_info}")
     
     try:
-        if 'check_in' in reservation_info:
-            logger.info(f"Check-in value: {reservation_info['check_in']}, Type: {type(reservation_info['check_in'])}")
-            if isinstance(reservation_info['check_in'], str):
-                logger.info(f"Attempting to parse check-in string: {reservation_info['check_in']}")
+        if 'check-in' in reservation_info:
+            logger.info(f"Check-in value: {reservation_info['check-in']}, Type: {type(reservation_info['check-in'])}")
+            if isinstance(reservation_info['check-in'], str):
+                logger.info(f"Attempting to parse check-in string: {reservation_info['check-in']}")
                 try:
-                    reservation_info['check_in'] = datetime.strptime(reservation_info['check_in'], "%Y-%m-%d").date()
+                    reservation_info['check_in'] = datetime.strptime(reservation_info['check-in'], "%Y-%m-%d").date()
                     logger.info(f"Successfully parsed check-in date: {reservation_info['check_in']}")
                 except ValueError as e:
-                    logger.error(f"Failed to parse check-in date: {reservation_info['check_in']}. Error: {str(e)}")
-                    reservation_info['error'] = f"Invalid check-in date format: {reservation_info['check_in']}"
+                    logger.error(f"Failed to parse check-in date: {reservation_info['check-in']}. Error: {str(e)}")
+                    reservation_info['error'] = f"Invalid check-in date format: {reservation_info['check-in']}"
                     return reservation_info
             
             check_in = reservation_info['check_in']
             logger.info(f"Final check-in date: {check_in}")
             
-            if 'check_out' in reservation_info:
-                logger.info(f"Check-out value: {reservation_info['check_out']}, Type: {type(reservation_info['check_out'])}")
-                if isinstance(reservation_info['check_out'], str):
-                    logger.info(f"Attempting to parse check-out string: {reservation_info['check_out']}")
+            if 'check-out' in reservation_info:
+                logger.info(f"Check-out value: {reservation_info['check-out']}, Type: {type(reservation_info['check-out'])}")
+                if isinstance(reservation_info['check-out'], str):
+                    logger.info(f"Attempting to parse check-out string: {reservation_info['check-out']}")
                     try:
-                        reservation_info['check_out'] = datetime.strptime(reservation_info['check_out'], "%Y-%m-%d").date()
+                        reservation_info['check_out'] = datetime.strptime(reservation_info['check-out'], "%Y-%m-%d").date()
                         logger.info(f"Successfully parsed check-out date: {reservation_info['check_out']}")
                     except ValueError as e:
-                        logger.error(f"Failed to parse check-out date: {reservation_info['check_out']}. Error: {str(e)}")
-                        reservation_info['error'] = f"Invalid check-out date format: {reservation_info['check_out']}"
+                        logger.error(f"Failed to parse check-out date: {reservation_info['check-out']}. Error: {str(e)}")
+                        reservation_info['error'] = f"Invalid check-out date format: {reservation_info['check-out']}"
                         return reservation_info
                 
                 check_out = reservation_info['check_out']
