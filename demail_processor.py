@@ -116,13 +116,6 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     
     return reservation_info
 
-
-
-
-
-
-
-
 def parse_date(date_string: str) -> Optional[date]:
     date_formats = [
         "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y",
