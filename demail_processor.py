@@ -51,16 +51,6 @@ def detect_language(text: str) -> str:
     logger.info(f"Detected language: {'Greek' if lang == 'el' else 'English'}")
     return 'el' if lang == 'el' else 'en'
 
-def clean_email_body(email_body: str) -> str:
-    logger.info("Cleaning email body")
-    email_body = re.sub(r'---------- Forwarded message ---------\n.*?\n\n', '', email_body, flags=re.DOTALL)
-    email_body = re.sub(r'^(From|Date|Subject|To):.*$', '', email_body, flags=re.MULTILINE)
-    email_body = re.sub(r'^[A-Za-z-]+:\s.*$', '', email_body, flags=re.MULTILINE)
-    email_body = re.sub(r'\n\s*\n', '\n\n', email_body)
-    email_body = email_body.strip()
-    logger.info(f"Cleaned email body (first 100 chars): {email_body[:100]}...")
-    return email_body
-
 
 def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Starting post-processing of reservation info")
