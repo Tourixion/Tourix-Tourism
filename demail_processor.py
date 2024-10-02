@@ -22,6 +22,7 @@ import dateparser
 from transliterate import detect_language as transliterate_detect_language
 
 from dotenv import load_dotenv
+from openai import OpenAI
 # Load environment variables
 load_dotenv()
 
@@ -113,28 +114,76 @@ def transform_to_standard_format(email_body: str) -> str:
     transformed_content = send_to_ai_model(prompt.format(email_body=email_body))
     return transformed_content
 
-def send_to_ai_model(prompt: str) -> str:
+OPEN_ROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+def send_to_ai_model_requests(prompt: str, max_retries: int = 3) -> str:
     headers = {
-        "Authorization": f"Bearer {OPEN_ROUTER_API_KEY}",
+        "Authorization": f"Bearer {os.getenv('OPEN_ROUTER_API_KEY')}",
+        "HTTP-Referer": "https://github.com/yourusername/your-repo",  # Replace with your actual GitHub repo URL
+        "X-Title": "Email Reservation Processor",
         "Content-Type": "application/json"
     }
 
     data = {
-        "model": "openai/gpt-3.5-turbo",  # You can change this to other models available on Open Router
+        "model": "openai/gpt-3.5-turbo",
         "messages": [
             {"role": "system", "content": "You are a helpful assistant that transforms email content into a standardized format."},
             {"role": "user", "content": prompt}
         ]
     }
 
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(OPEN_ROUTER_API_URL, headers=headers, json=data, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+            return result['choices'][0]['message']['content'].strip()
+        except RequestException as e:
+            logging.error(f"Attempt {attempt + 1} failed: Error in AI model communication: {str(e)}")
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2 ** attempt)  # Exponential backoff
+
+    raise Exception("Max retries reached for AI model communication")
+
+def send_to_ai_model_openai(prompt: str) -> str:
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPEN_ROUTER_API_KEY"),
+        default_headers={
+            "HTTP-Referer": "https://github.com/yourusername/your-repo",  # Replace with your actual GitHub repo URL
+            "X-Title": "Email Reservation Processor",
+        }
+    )
+
     try:
-        response = requests.post(OPEN_ROUTER_API_URL, headers=headers, json=data)
-        response.raise_for_status()
-        result = response.json()
-        return result['choices'][0]['message']['content'].strip()
-    except requests.RequestException as e:
+        completion = client.chat.completions.create(
+            model="openai/gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that transforms email content into a standardized format."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
         logging.error(f"Error in AI model communication: {str(e)}")
         raise
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def calculate_free_cancellation_date(check_in_date):
