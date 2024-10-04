@@ -124,20 +124,9 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
     
     return reservation_info
 
-
-
-
-
-
-
-
-
-
-
-
-
 def parse_check_in(content: str) -> Optional[date]:
     patterns = [
+        r'Check-in:\s*(\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
         r': (\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
         r'\*\*Check-in:\*\*\s*(\d{4}-\d{2}-\d{2})',
         r'Check-in:\s*(\d{4}-\d{2}-\d{2})',
@@ -265,6 +254,40 @@ def parse_nights(content: str) -> Optional[int]:
     logger.error("[PARSE_NIGHTS_ERROR] Number of nights not found")
     return None
 
+def parse_days(content: str) -> Optional[int]:
+    patterns = [
+        r'\*\*Days:\*\*\s*(\d+)',
+        r'Days:\s*(\d+)',
+        r'Number of days:\s*(\d+)',
+        r'Duration:\s*(\d+)\s*days?',
+        r'Stay duration:\s*(\d+)\s*days?',
+        r'Length of stay:\s*(\d+)\s*days?',
+        r'Lodging duration:\s*(\d+)\s*days?',
+        r'Total days:\s*(\d+)',
+        r'Days stayed:\s*(\d+)',
+        r'Days stays:\s*(\d+)',
+        r'Sleepovers:\s*(\d+)',
+        r'Booking duration:\s*(\d+)\s*days?',
+        r'Reservation length:\s*(\d+)\s*days?',
+        r'Period of stay:\s*(\d+)\s*days?',
+        r'Accommodation period:\s*(\d+)\s*days?',
+        r'Sojourn duration:\s*(\d+)\s*days?',
+        r'Lodging period:\s*(\d+)\s*days?',
+        r'Day count:\s*(\d+)',
+        r'Count of days:\s*(\d+)',
+        r'Duration in days:\s*(\d+)',
+        r'Stay length \(days\):\s*(\d+)',
+        r'days reserved:\s*(\d+)',
+        r'Booked days:\s*(\d+)',
+        r'ΗΜΕΡΕΣ:?\s*(\d+)',  # Greek: days
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    logger.error("[PARSE_DAYS_ERROR] Number of days not found")
+    return None
+
 def parse_adults(content: str) -> int:
     patterns = [
         r'\*\*Adults:\*\*\s*(\d+)',
@@ -335,7 +358,6 @@ def parse_children(content: str) -> int:
             return int(match.group(1))
     logger.error("[PARSE_CHILDREN_ERROR] Number of children not found")
     return 0
-
 
 def parse_room_type(content: str) -> Optional[str]:
     patterns = [
@@ -438,7 +460,14 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
         logger.info(f"Parsed number of nights: {nights}")
     else:
         logger.info("Number of nights not found")
-    
+
+    days = parse_days (standardized_content)
+    if days:
+        reservation_info['check_in'] = days
+        logger.info(f"[PARSE_STANDARDIZED_CONTENT] Parsed check-in date: {days}")
+    else:
+        logger.warning("[PARSE_STANDARDIZED_CONTENT_ERROR] Check-in date not found or invalid")
+
     # Parse adults
     adults = parse_adults(standardized_content)
     reservation_info['adults'] = adults
