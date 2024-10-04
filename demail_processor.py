@@ -254,7 +254,7 @@ def parse_nights(content: str) -> Optional[int]:
     logger.error("[PARSE_NIGHTS_ERROR] Number of nights not found")
     return None
 
-def parse_days(content: str) -> Optional[int]:
+def parse_daysu(content: str) -> Optional[int]:
     patterns = [
         r'\*\*Days:\*\*\s*(\d+)',
         r'Days:\s*(\d+)',
@@ -461,12 +461,12 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     else:
         logger.info("Number of nights not found")
 
-    days = parse_days (standardized_content)
-    if days:
-        reservation_info['check_in'] = days
-        logger.info(f"[PARSE_STANDARDIZED_CONTENT] Parsed check-in date: {days}")
+    daysu = parse_daysu (standardized_content)
+    if daysu is not None:
+        reservation_info['days'] = daysu
+        logger.info(f"Parsed number of days: {daysu}")
     else:
-        logger.warning("[PARSE_STANDARDIZED_CONTENT_ERROR] Check-in date not found or invalid")
+        logger.info("Number of days not found")
 
     # Parse adults
     adults = parse_adults(standardized_content)
@@ -499,6 +499,11 @@ def parse_standardized_content(standardized_content: str) -> Dict[str, Any]:
     # If nights are missing but  and check-out are provided, calculate nights
     if 'check_in' in reservation_info and 'check_out' in reservation_info and 'nights' not in reservation_info:
         calculated_nights = (reservation_info['check_out'] - reservation_info['check_in']).days
+        reservation_info['nights'] = calculated_nights
+        logger.info(f"Calculated number of nights: {calculated_nights}")
+
+    if 'check_in' in reservation_info and 'check_out' not in reservation_info and 'nights' not in reservation_info and daysu in reservation_info:
+        calculated_nights = reservation_info['daysu'] - 1
         reservation_info['nights'] = calculated_nights
         logger.info(f"Calculated number of nights: {calculated_nights}")
     
