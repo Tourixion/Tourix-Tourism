@@ -126,6 +126,7 @@ def post_process_reservation_info(reservation_info: Dict[str, Any]) -> Dict[str,
 
 def parse_check_in(content: str) -> Optional[date]:
     patterns = [
+        r'"Check-in":\s*"(\d{4}-\d{2}-\d{2})"',  # Add this new pattern
         r'Check-in:\s*(\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
         r': (\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
         r'\*\*Check-in:\*\*\s*(\d{4}-\d{2}-\d{2})',
@@ -173,6 +174,7 @@ def parse_check_in(content: str) -> Optional[date]:
 
 def parse_check_out(content: str) -> Optional[date]:
     patterns = [
+        r'"Check-out":\s*"(\d{4}-\d{2}-\d{2})"',  # Add this new pattern
         r'Check-out:\s*(\d{4}-\d{2}-\d{2})',  # This pattern matches the date format in the AI's output
         r'\*\*Check-out:\*\*\s*(\d{4}-\d{2}-\d{2})',
         r'\*\*Check-out:\*\*\s*(.+)',
@@ -588,8 +590,8 @@ def transform_to_standard_format(email_body: str) -> str:
     6. For adults and children, use the numbers mentioned. If not specified, use 0.
     7. If room type is not specified, use 'null'.
     8. IMPORTANT: Ignore days of the week (e.g., Monday, Tuesday) when determining dates. Focus only on the numeric date information.
-    10. For days:
-       - Use [NUMBER] if explicitly mentioned in the email.
+    10. For Days:
+       - Use [NUMBER] if explicitly mentioned in the email such as staying for three days.
        - Use 'null' if not mentioned and cannot be directly inferred from the email content.
        - Do NOT calculate days based on  and check-out dates.
     11. If no number of Guests,adults kids excetra is mentioned assume it is equal to twice the number of rooms,
