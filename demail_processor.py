@@ -534,16 +534,17 @@ def transform_to_standard_format(email_body: str) -> str:
     {email_body}
     
     Standardized Format:
-    : [DATE]
+    Check-in: [DATE or null]
     Check-out: [DATE or null]
     Nights: [NUMBER or null]
+    Days: [NUMBER or null]
     Adults: [NUMBER]
     Children: [NUMBER]
     Room Type: [TYPE or null]
     
     Please follow these guidelines carefully:
     1. Fill in the [PLACEHOLDERS] with the appropriate information from the email.
-    2. For check-out, use [DATE] if explicitly mentioned, otherwise use 'null'.
+    2. For Check-out and Check-in, use [DATE] if explicitly mentioned such as till 14/10/2024 or october 14 (- transform it to numeric, otherwise use 'null'.
     3. For nights:
        - Use [NUMBER] if explicitly mentioned in the email.
        - Use 'null' if not mentioned and cannot be directly inferred from the email content.
@@ -553,6 +554,11 @@ def transform_to_standard_format(email_body: str) -> str:
     6. For adults and children, use the numbers mentioned. If not specified, use 0.
     7. If room type is not specified, use 'null'.
     8. IMPORTANT: Ignore days of the week (e.g., Monday, Tuesday) when determining dates. Focus only on the numeric date information.
+    10. For days:
+       - Use [NUMBER] if explicitly mentioned in the email.
+       - Use 'null' if not mentioned and cannot be directly inferred from the email content.
+       - Do NOT calculate days based on  and check-out dates.
+    11. If no number of Guests,adults kids excetra is mentioned assume it is equal to twice the number of rooms,
     
     Current date for reference: {current_date.strftime("%Y-%m-%d")}
 
